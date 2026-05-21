@@ -1,0 +1,38 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gopublish-iteras-block/iteras-paywall",
+	"version": "0.1.0",
+	"title": "Iteras Paywall",
+	"category": "design",
+	"icon": "lock",
+	"description": "Reveals inner content only to visitors with an active Iteras subscription. All other visitors see nothing.",
+	"keywords": [ "iteras", "paywall", "subscription", "access" ],
+	"attributes": {
+		"paywallIds": {
+			"type": "array",
+			"items": { "type": "string" },
+			"default": []
+		}
+	},
+	"layout": {
+		"type": "constrained"
+	},
+	"supports": {
+		"html": false,
+		"color": {
+			"background": true,
+			"text": true
+		},
+		"spacing": {
+			"margin": true,
+			"padding": true
+		},
+		"align": [ "wide", "full" ]
+	},
+	"textdomain": "gopublish-iteras-block",
+	"editorScript": "file:./index.js",
+	"editorStyle": "file:./index.css",
+	"style": "file:./style-index.css",
+	"render": "file:./render.php"
+}
