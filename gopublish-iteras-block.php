@@ -59,3 +59,15 @@ if ( ! function_exists( 'gopublish_iteras_block_editor_data' ) ) {
 	}
 }
 add_action( 'enqueue_block_editor_assets', 'gopublish_iteras_block_editor_data' );
+
+function body_class_for_paywall_access( $classes ) {
+	if ( is_singular() ) {
+		if ( iteras_user_has_access_for_post() ) {
+			$classes[] = 'has-access';			
+		} else {
+			$classes[] = 'no-access';
+		}
+	}
+	return $classes;
+}
+add_filter( 'body_class', 'body_class_for_paywall_access' );
