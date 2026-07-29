@@ -4,6 +4,8 @@
 	"description": "A WordPress block that reveals or hides inner content based on Iteras subscription access.",
 	"author": "Retrofitter",
 	"license": "GPL-2.0-or-later",
+	"files": [ "build","inc","languages","gopublish-iteras-block.php" ],
+
 	"scripts": {
 		"build": "wp-scripts build && wp-scripts build-blocks-manifest",
 		"format": "wp-scripts format",
