@@ -71,3 +71,15 @@ function body_class_for_paywall_access( $classes ) {
 	return $classes;
 }
 add_filter( 'body_class', 'body_class_for_paywall_access' );
+
+function post_class_for_paywall_access( $classes, $class, $post_id) {
+	// if ( is_singular() ) {
+		if ( iteras_user_has_access_for_post($post_id) ) {
+			$classes[] = 'has-access';			
+		} else {
+			$classes[] = 'no-access';
+		}
+	// }
+	return $classes;
+}
+add_filter( 'post_class', 'post_class_for_paywall_access', 10, 3 );
