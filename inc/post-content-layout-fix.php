@@ -105,7 +105,7 @@ function gopublish_iteras_fix_wrapper_layout_class( string $content ): string {
 
 	return str_replace(
 		'class="iteras-content-wrapper ',
-		'class="iteras-content-wrapper alignfull has-global-padding' . $layout_class . ' ',
+		'class="iteras-content-wrapper alignfull has-global-padding ' . $layout_class . ' ',
 		$content
 	);
 }
