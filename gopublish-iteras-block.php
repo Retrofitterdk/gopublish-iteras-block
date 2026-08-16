@@ -4,7 +4,7 @@
  * Description:       A block that reveals or hides inner content based on Iteras subscription access.
  * Requires at least: 6.1
  * Requires PHP:      7.4
- * Version:           0.2.0
+ * Version:           0.2.1
  * Author:            Retrofitter
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
