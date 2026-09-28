@@ -139,54 +139,106 @@ if ( ! function_exists( 'iteras_user_has_access_for_post' ) ) {
 }
 
 /**
- * Returns the single, unambiguous Iteras ordering ID that should be offered
- * to unlock a post, based on the paywall_id -> ordering_id mapping saved by
- * the "Iteras Ordering" settings screen (see inc/admin-settings.php).
+ * Returns a single value, deduped across a post's paywall IDs, from the
+ * per-paywall config saved by the "Iteras Paywall CTA" settings screen (see
+ * inc/admin-settings.php) — shared logic behind
+ * iteras_get_paywall_cta_pattern_id_for_post() and
+ * iteras_get_paywall_label_for_post().
  *
- * A post can carry several paywall IDs. If they map to zero or to more than
- * one distinct ordering ID, there's no single correct offer to push, so this
- * returns null — callers should fall back to a generic call-to-action, see
- * iteras_get_ordering_fallback_cta().
+ * A post can carry several paywall IDs. If they resolve to zero or to more
+ * than one distinct non-empty value for the given $field, there's no single
+ * correct answer, so this returns null — callers should fall back to the
+ * "Default" tab's value instead, see iteras_get_default_paywall_cta_pattern_id()
+ * and iteras_get_default_paywall_cta_label().
  *
  * @param int|null $post_id Post ID. Defaults to the current global post.
+ * @param string   $field   'pattern_id' or 'label'.
  * @return string|null
  */
-if ( ! function_exists( 'iteras_get_ordering_id_for_post' ) ) {
-	function iteras_get_ordering_id_for_post( ?int $post_id = null ): ?string {
+if ( ! function_exists( 'iteras_get_paywall_cta_field_for_post' ) ) {
+	function iteras_get_paywall_cta_field_for_post( ?int $post_id, string $field ): ?string {
 		$paywall_ids = iteras_get_post_paywall_ids( $post_id );
 
 		if ( empty( $paywall_ids ) ) {
 			return null;
 		}
 
-		$mapping = get_option( 'gopublish_iteras_ordering_settings', [] )['mapping'] ?? [];
+		$paywalls = get_option( 'gopublish_iteras_paywall_cta_settings', [] )['paywalls'] ?? [];
 
-		// Collect distinct mapped ordering IDs (as keys, to dedupe cheaply).
-		$ordering_ids = [];
+		// Collect distinct non-empty values (as keys, to dedupe cheaply).
+		$values = [];
 		foreach ( $paywall_ids as $paywall_id ) {
-			if ( ! empty( $mapping[ $paywall_id ] ) ) {
-				$ordering_ids[ $mapping[ $paywall_id ] ] = true;
+			$value = $paywalls[ $paywall_id ][ $field ] ?? '';
+			if ( $value !== '' && $value !== 0 ) {
+				$values[ $value ] = true;
 			}
 		}
-		$ordering_ids = array_keys( $ordering_ids );
+		$values = array_keys( $values );
 
-		return count( $ordering_ids ) === 1 ? $ordering_ids[0] : null;
+		return count( $values ) === 1 ? (string) $values[0] : null;
 	}
 }
 
 /**
- * Returns the admin-configured fallback call-to-action markup from the
- * "Iteras Ordering" settings screen (see inc/admin-settings.php), shown when
- * a post's paywall IDs don't resolve to exactly one ordering ID.
+ * Returns the single, unambiguous synced-pattern ID whose content should
+ * replace the default paywall content to unlock a post, based on the
+ * paywall_id -> pattern_id mapping saved by the "Iteras Paywall CTA"
+ * settings screen. Null when ambiguous or unmapped — see
+ * iteras_get_default_paywall_cta_pattern_id() for the fallback.
  *
- * @return string Raw HTML/shortcode text. Callers must run it through
- *                do_shortcode() and wp_kses_post() before output.
+ * @param int|null $post_id Post ID. Defaults to the current global post.
+ * @return int|null
  */
-if ( ! function_exists( 'iteras_get_ordering_fallback_cta' ) ) {
-	function iteras_get_ordering_fallback_cta(): string {
-		$settings = get_option( 'gopublish_iteras_ordering_settings', [] );
+if ( ! function_exists( 'iteras_get_paywall_cta_pattern_id_for_post' ) ) {
+	function iteras_get_paywall_cta_pattern_id_for_post( ?int $post_id = null ): ?int {
+		$pattern_id = iteras_get_paywall_cta_field_for_post( $post_id, 'pattern_id' );
 
-		return $settings['fallback_cta'] ?? '';
+		return $pattern_id !== null ? (int) $pattern_id : null;
+	}
+}
+
+/**
+ * Returns the single, unambiguous label text for a post, based on the
+ * paywall_id -> label mapping saved by the "Iteras Paywall CTA" settings
+ * screen. Null when ambiguous or unmapped — see
+ * iteras_get_default_paywall_cta_label() for the fallback.
+ *
+ * @param int|null $post_id Post ID. Defaults to the current global post.
+ * @return string|null
+ */
+if ( ! function_exists( 'iteras_get_paywall_label_for_post' ) ) {
+	function iteras_get_paywall_label_for_post( ?int $post_id = null ): ?string {
+		return iteras_get_paywall_cta_field_for_post( $post_id, 'label' );
+	}
+}
+
+/**
+ * Returns the synced-pattern ID configured on the "Default" tab of the
+ * "Iteras Paywall CTA" settings screen — used whenever a post's paywall IDs
+ * don't resolve to exactly one specific pattern.
+ *
+ * @return int 0 when no default pattern is configured.
+ */
+if ( ! function_exists( 'iteras_get_default_paywall_cta_pattern_id' ) ) {
+	function iteras_get_default_paywall_cta_pattern_id(): int {
+		$settings = get_option( 'gopublish_iteras_paywall_cta_settings', [] );
+
+		return (int) ( $settings['default']['pattern_id'] ?? 0 );
+	}
+}
+
+/**
+ * Returns the label text configured on the "Default" tab of the
+ * "Iteras Paywall CTA" settings screen — used whenever a post's paywall IDs
+ * don't resolve to exactly one specific label.
+ *
+ * @return string Empty string when no default label is configured.
+ */
+if ( ! function_exists( 'iteras_get_default_paywall_cta_label' ) ) {
+	function iteras_get_default_paywall_cta_label(): string {
+		$settings = get_option( 'gopublish_iteras_paywall_cta_settings', [] );
+
+		return $settings['default']['label'] ?? '';
 	}
 }
 
