@@ -4,7 +4,7 @@
  * Description:       A block that reveals or hides inner content based on Iteras subscription access.
  * Requires at least: 6.1
  * Requires PHP:      7.4
- * Version:           0.2.2
+ * Version:           0.4.0
  * Author:            Retrofitter
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -20,7 +20,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once plugin_dir_path( __FILE__ ) . 'inc/functions-iteras.php';
 require_once plugin_dir_path( __FILE__ ) . 'inc/post-content-layout-fix.php';
-require_once plugin_dir_path( __FILE__ ) . 'inc/shortcode-ordering.php';
+require_once plugin_dir_path( __FILE__ ) . 'inc/shortcode-paywall-cta.php';
+require_once plugin_dir_path( __FILE__ ) . 'inc/block-bindings.php';
 
 if ( is_admin() ) {
 	require_once plugin_dir_path( __FILE__ ) . 'inc/admin-settings.php';
