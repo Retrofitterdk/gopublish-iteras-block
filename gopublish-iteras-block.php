@@ -4,7 +4,7 @@
  * Description:       A block that reveals or hides inner content based on Iteras subscription access.
  * Requires at least: 6.1
  * Requires PHP:      7.4
- * Version:           0.2.2
+ * Version:           0.5.0
  * Author:            Retrofitter
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -20,6 +20,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once plugin_dir_path( __FILE__ ) . 'inc/functions-iteras.php';
 require_once plugin_dir_path( __FILE__ ) . 'inc/post-content-layout-fix.php';
+require_once plugin_dir_path( __FILE__ ) . 'inc/shortcode-paywall-cta.php';
+require_once plugin_dir_path( __FILE__ ) . 'inc/block-bindings.php';
+
+if ( is_admin() ) {
+	require_once plugin_dir_path( __FILE__ ) . 'inc/admin-settings.php';
+}
 
 if ( ! function_exists( 'gopublish_iteras_block_init' ) ) {
 	function gopublish_iteras_block_init() {
@@ -34,9 +40,16 @@ if ( ! function_exists( 'gopublish_iteras_block_init' ) ) {
 		}
 
 		register_block_type( __DIR__ . '/build/blocks/iteras-paywall' );
+		register_block_type( __DIR__ . '/build/blocks/iteras-logged-in' );
 
 		wp_set_script_translations(
 			'gopublish-iteras-block-iteras-paywall-editor-script',
+			'gopublish-iteras-block',
+			plugin_dir_path( __FILE__ ) . 'languages'
+		);
+
+		wp_set_script_translations(
+			'gopublish-iteras-block-iteras-logged-in-editor-script',
 			'gopublish-iteras-block',
 			plugin_dir_path( __FILE__ ) . 'languages'
 		);

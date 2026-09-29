@@ -69,10 +69,49 @@ if ( ! function_exists( 'iteras_user_has_access' ) ) {
 }
 
 /**
+ * Returns the paywall IDs assigned to a post via its post meta, normalised
+ * to an array. Returns null when there's no Iteras plugin active or no
+ * post to resolve (distinct from an empty array, which means the post
+ * resolved fine but has no paywall assigned — freely accessible).
+ *
+ * Usage:
+ *   iteras_get_post_paywall_ids()             // current post in the loop
+ *   iteras_get_post_paywall_ids( $post->ID )
+ *
+ * @param int|null $post_id Post ID. Defaults to the current global post.
+ * @return string[]|null
+ */
+if ( ! function_exists( 'iteras_get_post_paywall_ids' ) ) {
+	function iteras_get_post_paywall_ids( ?int $post_id = null ): ?array {
+		if ( ! class_exists( 'Iteras' ) ) {
+			return null;
+		}
+
+		if ( $post_id === null ) {
+			$post_id = get_the_ID();
+		}
+
+		if ( ! $post_id ) {
+			return null;
+		}
+
+		$paywall_ids = get_post_meta( $post_id, Iteras::POST_META_KEY, true );
+
+		// Backwards compatibility: old single-value meta ("user" or "sub") maps to all paywalls.
+		if ( ! is_array( $paywall_ids ) && in_array( $paywall_ids, [ 'user', 'sub' ], true ) ) {
+			$paywall_ids = Iteras::get_instance()->get_paywall_ids();
+		}
+
+		return is_array( $paywall_ids ) ? $paywall_ids : [];
+	}
+}
+
+/**
  * Returns true if the current visitor has access to a specific post's paywalled content.
  *
- * Looks up the paywall IDs assigned to the post via its post meta and delegates
- * to iteras_user_has_access(). Falls back to the global $post when no ID is given.
+ * Looks up the paywall IDs assigned to the post via iteras_get_post_paywall_ids()
+ * and delegates to iteras_user_has_access(). Falls back to the global $post when
+ * no ID is given.
  *
  * Usage:
  *   if ( iteras_user_has_access_for_post() ) { ... }        // current post in the loop
@@ -83,24 +122,11 @@ if ( ! function_exists( 'iteras_user_has_access' ) ) {
  */
 if ( ! function_exists( 'iteras_user_has_access_for_post' ) ) {
 	function iteras_user_has_access_for_post( ?int $post_id = null ): bool {
-		if ( ! class_exists( 'Iteras' ) ) {
+		$paywall_ids = iteras_get_post_paywall_ids( $post_id );
+
+		// No Iteras plugin, or no post to check — deny access.
+		if ( $paywall_ids === null ) {
 			return false;
-		}
-
-		if ( $post_id === null ) {
-			$post_id = get_the_ID();
-		}
-
-		if ( ! $post_id ) {
-			return false;
-		}
-
-		$iteras      = Iteras::get_instance();
-		$paywall_ids = get_post_meta( $post_id, Iteras::POST_META_KEY, true );
-
-		// Backwards compatibility: old single-value meta ("user" or "sub") maps to all paywalls.
-		if ( ! is_array( $paywall_ids ) && in_array( $paywall_ids, [ 'user', 'sub' ], true ) ) {
-			$paywall_ids = $iteras->get_paywall_ids();
 		}
 
 		// No paywall assigned means the content is freely accessible.
@@ -109,6 +135,110 @@ if ( ! function_exists( 'iteras_user_has_access_for_post' ) ) {
 		}
 
 		return iteras_user_has_access( $paywall_ids );
+	}
+}
+
+/**
+ * Returns a single value, deduped across a post's paywall IDs, from the
+ * per-paywall config saved by the "Iteras Paywall CTA" settings screen (see
+ * inc/admin-settings.php) — shared logic behind
+ * iteras_get_paywall_cta_pattern_id_for_post() and
+ * iteras_get_paywall_label_for_post().
+ *
+ * A post can carry several paywall IDs. If they resolve to zero or to more
+ * than one distinct non-empty value for the given $field, there's no single
+ * correct answer, so this returns null — callers should fall back to the
+ * "Default" tab's value instead, see iteras_get_default_paywall_cta_pattern_id()
+ * and iteras_get_default_paywall_cta_label().
+ *
+ * @param int|null $post_id Post ID. Defaults to the current global post.
+ * @param string   $field   'pattern_id' or 'label'.
+ * @return string|null
+ */
+if ( ! function_exists( 'iteras_get_paywall_cta_field_for_post' ) ) {
+	function iteras_get_paywall_cta_field_for_post( ?int $post_id, string $field ): ?string {
+		$paywall_ids = iteras_get_post_paywall_ids( $post_id );
+
+		if ( empty( $paywall_ids ) ) {
+			return null;
+		}
+
+		$paywalls = get_option( 'gopublish_iteras_paywall_cta_settings', [] )['paywalls'] ?? [];
+
+		// Collect distinct non-empty values (as keys, to dedupe cheaply).
+		$values = [];
+		foreach ( $paywall_ids as $paywall_id ) {
+			$value = $paywalls[ $paywall_id ][ $field ] ?? '';
+			if ( $value !== '' && $value !== 0 ) {
+				$values[ $value ] = true;
+			}
+		}
+		$values = array_keys( $values );
+
+		return count( $values ) === 1 ? (string) $values[0] : null;
+	}
+}
+
+/**
+ * Returns the single, unambiguous synced-pattern ID whose content should
+ * replace the default paywall content to unlock a post, based on the
+ * paywall_id -> pattern_id mapping saved by the "Iteras Paywall CTA"
+ * settings screen. Null when ambiguous or unmapped — see
+ * iteras_get_default_paywall_cta_pattern_id() for the fallback.
+ *
+ * @param int|null $post_id Post ID. Defaults to the current global post.
+ * @return int|null
+ */
+if ( ! function_exists( 'iteras_get_paywall_cta_pattern_id_for_post' ) ) {
+	function iteras_get_paywall_cta_pattern_id_for_post( ?int $post_id = null ): ?int {
+		$pattern_id = iteras_get_paywall_cta_field_for_post( $post_id, 'pattern_id' );
+
+		return $pattern_id !== null ? (int) $pattern_id : null;
+	}
+}
+
+/**
+ * Returns the single, unambiguous label text for a post, based on the
+ * paywall_id -> label mapping saved by the "Iteras Paywall CTA" settings
+ * screen. Null when ambiguous or unmapped — see
+ * iteras_get_default_paywall_cta_label() for the fallback.
+ *
+ * @param int|null $post_id Post ID. Defaults to the current global post.
+ * @return string|null
+ */
+if ( ! function_exists( 'iteras_get_paywall_label_for_post' ) ) {
+	function iteras_get_paywall_label_for_post( ?int $post_id = null ): ?string {
+		return iteras_get_paywall_cta_field_for_post( $post_id, 'label' );
+	}
+}
+
+/**
+ * Returns the synced-pattern ID configured on the "Default" tab of the
+ * "Iteras Paywall CTA" settings screen — used whenever a post's paywall IDs
+ * don't resolve to exactly one specific pattern.
+ *
+ * @return int 0 when no default pattern is configured.
+ */
+if ( ! function_exists( 'iteras_get_default_paywall_cta_pattern_id' ) ) {
+	function iteras_get_default_paywall_cta_pattern_id(): int {
+		$settings = get_option( 'gopublish_iteras_paywall_cta_settings', [] );
+
+		return (int) ( $settings['default']['pattern_id'] ?? 0 );
+	}
+}
+
+/**
+ * Returns the label text configured on the "Default" tab of the
+ * "Iteras Paywall CTA" settings screen — used whenever a post's paywall IDs
+ * don't resolve to exactly one specific label.
+ *
+ * @return string Empty string when no default label is configured.
+ */
+if ( ! function_exists( 'iteras_get_default_paywall_cta_label' ) ) {
+	function iteras_get_default_paywall_cta_label(): string {
+		$settings = get_option( 'gopublish_iteras_paywall_cta_settings', [] );
+
+		return $settings['default']['label'] ?? '';
 	}
 }
 
