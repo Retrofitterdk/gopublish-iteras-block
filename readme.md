@@ -15,10 +15,12 @@ WordPress 6.5 is the minimum because the `Requires Plugins` dependency header �
 
 ## How it works
 
-The **Iteras Paywall** block is a dynamic container block. Editors place any inner blocks (text, images, embeds, etc.) inside it. On the frontend, `render.php` runs an access check on every page load:
+The plugin ships two dynamic container blocks — **Iteras Paywall** and **Iteras Login Status** — plus a settings screen, a shortcode, and a Block Bindings source for driving Iteras' own inline paywall (see further down). Both blocks work the same way: editors place any inner blocks (text, images, embeds, etc.) inside them, and on the frontend `render.php` runs an access check on every page load:
 
-- If the visitor holds a valid Iteras subscription pass → the inner blocks are rendered.
-- If the visitor does not have access → the block outputs nothing.
+- If the check passes → the inner blocks are rendered.
+- If it doesn't → the block outputs nothing.
+
+They differ in *what* they check: Iteras Paywall gates by a specific paywall (defaulting to the current post's own assigned paywall(s)); Iteras Login Status answers the simpler, unscoped question "does this visitor hold a valid Iteras pass for anything at all" — see each block's own section below for the distinction and when to use which.
 
 Access is enforced entirely in PHP using the visitor's `iteraspass` cookie. No JavaScript is involved in the access check.
 
@@ -37,26 +39,29 @@ gopublish-iteras-block/
 │   └── post-content-layout-fix.php   # Keeps Iteras' auto paywall wrapper inside block-theme layout bounds
 ├── src/
 │   └── blocks/
-│       └── iteras-paywall/
-│           ├── block.json            # Block metadata
-│           ├── index.js              # Block registration entry point
-│           ├── edit.js               # Editor component
-│           ├── save.js               # Save function
-│           ├── render.php            # Server-side render (access gate)
-│           ├── editor.scss           # Editor-only styles
-│           └── style.scss            # Frontend styles
+│       ├── iteras-paywall/
+│       │   ├── block.json            # Block metadata
+│       │   ├── index.js              # Block registration entry point
+│       │   ├── edit.js               # Editor component
+│       │   ├── save.js               # Save function
+│       │   ├── render.php            # Server-side render (access gate)
+│       │   ├── editor.scss           # Editor-only styles
+│       │   └── style.scss            # Frontend styles
+│       └── iteras-logged-in/         # Same file layout as iteras-paywall/ above
+│           └── ...                   # (block.json, index.js, edit.js, save.js, render.php, editor.scss, style.scss)
 ├── build/                            # Compiled assets (generated, do not edit)
 │   ├── blocks-manifest.php           # PHP block metadata manifest (WP 6.7+)
 │   └── blocks/
-│       └── iteras-paywall/
-│           ├── block.json
-│           ├── index.js
-│           ├── index.css             # Compiled editor styles
-│           ├── index-rtl.css
-│           ├── style-index.css       # Compiled frontend styles
-│           ├── style-index-rtl.css
-│           ├── index.asset.php       # Dependency manifest
-│           └── render.php
+│       ├── iteras-paywall/
+│       │   ├── block.json
+│       │   ├── index.js
+│       │   ├── index.css             # Compiled editor styles
+│       │   ├── index-rtl.css
+│       │   ├── style-index.css       # Compiled frontend styles
+│       │   ├── style-index-rtl.css
+│       │   ├── index.asset.php       # Dependency manifest
+│       │   └── render.php
+│       └── iteras-logged-in/         # Same file layout as iteras-paywall/ above
 ├── languages/
 │   └── gopublish-iteras-block.pot   # Translation template
 ├── package.json
@@ -104,6 +109,37 @@ if ( ! $has_access ) {
 }
 echo $content;
 ```
+
+## The Iteras Login Status block
+
+**Block name:** `gopublish-iteras-block/iteras-logged-in`  
+**Category:** Design  
+**Type:** Dynamic (server-side rendered via `render.php`)
+
+A block equivalent of Iteras' own `[iteras-if-logged-in]` / `[iteras-if-not-logged-in]` shortcodes (`Iteras::content_by_login_status()` in `iteras/public/iteras-public.php`), for use in places shortcodes aren't usable — template parts, synced patterns used outside `the_content`, etc.
+
+"Logged in" means the visitor holds a valid Iteras subscription pass (the `iteraspass` cookie), not a WordPress account login — matching the shortcodes' own terminology.
+
+### Attributes
+
+| Attribute | Type | Default | Description |
+|---|---|---|---|
+| `showWhen` | `string` | `'logged-in'` | Either `'logged-in'` or `'not-logged-in'` — which visitors see the inner content. |
+
+Deliberately has no paywall-selection attribute. An earlier version let editors optionally restrict the check to specific paywalls (like the Iteras Paywall block's `paywallIds`), but combined with `showWhen: 'not-logged-in'` that produced a negated-OR condition — "shown to everyone *except* visitors who qualify for at least one of the checked paywalls" — that's hard to reason about correctly, and duplicated what the Iteras Paywall block already does for the `'logged-in'` case. This block only ever checks for a pass against **any** paywall configured in Iteras (`iteras_user_has_access()` with no restriction). Use the Iteras Paywall block instead for paywall-specific gating.
+
+### Editor controls
+
+A single **RadioControl** in the sidebar: "Show content to" → *visitors who are logged in* / *visitors who are NOT logged in*. The block's canvas label reflects the current mode (`Iteras: Logged in` / `Iteras: Not logged in`) so blocks are distinguishable at a glance without opening the sidebar.
+
+### Render logic and edge cases
+
+`render.php` deliberately does **not** delegate to `iteras_user_has_access_for_post()` or rely solely on `iteras_user_has_access()`'s own internal bypasses — it reimplements two checks explicitly, in the same order `content_by_login_status()` does, because they must apply identically to *both* branches of `showWhen`:
+
+1. **No server-side validation configured** → content is always shown (fail open), in either mode. There's no way to check the pass at all in this state.
+2. **Current user has `edit_pages`** → content is always shown, in either mode. This is the subtle one: naively calling `iteras_user_has_access()` (which has its own internal editor bypass returning `true`) and then inverting that for `'not-logged-in'` mode would incorrectly *hide* content from editors in that mode. Editors must see the content regardless of which mode is selected, exactly like the shortcodes.
+
+Only once both of those are ruled out does it evaluate `iteras_user_has_access()` and compare against `showWhen`.
 
 ## Helper functions (`inc/functions-iteras.php`)
 

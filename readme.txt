@@ -3,7 +3,7 @@ Contributors:      retrofitter
 Tags:              iteras, paywall, subscription, access control, block
 Requires at least: 6.5
 Tested up to:      7.0
-Stable tag:        0.4.0
+Stable tag:        0.5.0
 Requires PHP:      7.4
 Requires Plugins:  iteras
 License:           GPL-2.0-or-later
@@ -54,6 +54,14 @@ To keep the pattern dropdown from growing unwieldy as more synced patterns are a
 
 The plugin registers a `gopublish-iteras-block/paywall-label` Block Bindings source (WordPress 6.5+), resolving to the same per-paywall label configured on the settings screen above. A theme can bind any paragraph block's content to this source (`"metadata":{"bindings":{"content":{"source":"gopublish-iteras-block/paywall-label"}}}`, with `uses_context: ["postId"]`) to render a dynamic, per-paywall label anywhere in a template or pattern.
 
+**Iteras Login Status block**
+
+Adds a second block, **Iteras Login Status**, alongside Iteras Paywall — a block equivalent of Iteras' own `[iteras-if-logged-in]` / `[iteras-if-not-logged-in]` shortcodes, for places shortcodes aren't usable (template parts, synced patterns used outside the main content, etc). Its sidebar panel has one control: "Show content to" — **visitors who are logged in** or **visitors who are NOT logged in**. "Logged in" means holding a valid Iteras subscription pass of any kind, not a WordPress account login.
+
+Unlike the Iteras Paywall block, this block is deliberately unscoped — it always checks for a pass against any paywall configured in Iteras, with no per-paywall restriction. An earlier version let editors optionally restrict it to specific paywalls, but combined with "NOT logged in" that produced a negated-OR ("shown to everyone except visitors who qualify for at least one of the checked paywalls") that was genuinely hard to reason about, and duplicated what the Iteras Paywall block already does. Use the Iteras Paywall block instead for paywall-specific content gating; use Iteras Login Status only to answer "is this visitor a subscriber of any kind, yes or no."
+
+Like the shortcodes it replaces, WordPress users with the `edit_pages` capability always see the content in either mode, and the block fails open (content always shown) when Iteras' server-side validation setting is disabled.
+
 == Installation ==
 
 1. Ensure the Iteras plugin is installed and activated.
@@ -99,7 +107,18 @@ In a single WordPress option, `gopublish_iteras_paywall_cta_settings`, holding a
 
 An earlier version of this plugin had a **Settings → Iteras Ordering** screen mapping each paywall to a plain Iteras "ordering ID" string, consumed by a `[iteras-ordering-for-post]` shortcode. That's been replaced by the pattern-based system described above — a subscription manager now only ever picks a synced pattern instead of typing raw ordering IDs. If `[iteras-ordering-for-post]` is still present in Iteras' call-to-action box, replace it with `[iteras-paywall-cta]`.
 
+= How is the Iteras Login Status block different from the Iteras Paywall block? =
+
+Iteras Paywall gates content by a *specific* paywall (defaulting to the current post's own assigned paywall(s)). Iteras Login Status answers a simpler, unscoped question — "does this visitor hold a valid Iteras pass for anything at all" — which is what makes it usable in contexts with no specific post/paywall in scope, like a site header or footer. It has no paywall-selection option; use Iteras Paywall instead when you need to gate by a specific paywall.
+
+= Can I restrict the Iteras Login Status block to a specific paywall? =
+
+No, by design. An earlier version allowed this, but combined with the block's "visitors who are NOT logged in" mode it produced a negated-OR condition ("shown to everyone except visitors who qualify for at least one of the checked paywalls") that was too easy to get backwards. Use the Iteras Paywall block for paywall-specific gating instead.
+
 == Changelog ==
+
+= 0.5.0 =
+* Add "Iteras Login Status" block — a block equivalent of `[iteras-if-logged-in]` / `[iteras-if-not-logged-in]` for use where shortcodes aren't usable, with a "Show content to: logged in / not logged in" toggle. Deliberately unscoped (no per-paywall restriction) to avoid a confusing negated-OR condition; use the Iteras Paywall block for paywall-specific gating.
 
 = 0.4.0 =
 * Add "Iteras Paywall CTA" settings screen (Settings → Iteras Paywall CTA): one tab per synced paywall plus a Default tab, each pairing a label with a synced-pattern picker.
