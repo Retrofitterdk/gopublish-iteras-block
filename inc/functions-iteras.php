@@ -107,6 +107,34 @@ if ( ! function_exists( 'iteras_get_post_paywall_ids' ) ) {
 }
 
 /**
+ * Returns Iteras' own "Default paywall access for new posts" setting,
+ * normalised to an array — the same shape iteras_get_post_paywall_ids()
+ * and iteras_user_has_access() expect.
+ *
+ * This is a pure UI default: Iteras only uses it to pre-tick a checkbox in
+ * the post-editor metabox for posts that don't have paywall meta saved yet
+ * (Iteras_Admin::paywall_post_meta_box(), iteras/admin/iteras-admin.php) —
+ * it's never applied to a post automatically just by existing. The
+ * underlying setting is always either '' ("Everybody") or a single paywall
+ * ID, never multiple (it's a plain <select>, not a checkbox list).
+ *
+ * @return string[]|null Empty array when set to "Everybody", a one-element
+ *                        array holding the default paywall ID otherwise.
+ *                        Null when the Iteras plugin isn't active.
+ */
+if ( ! function_exists( 'iteras_get_default_paywall_ids' ) ) {
+	function iteras_get_default_paywall_ids(): ?array {
+		if ( ! class_exists( 'Iteras' ) ) {
+			return null;
+		}
+
+		$default_access = Iteras::get_instance()->settings['default_access'] ?? '';
+
+		return $default_access !== '' ? [ $default_access ] : [];
+	}
+}
+
+/**
  * Returns true if the current visitor has access to a specific post's paywalled content.
  *
  * Looks up the paywall IDs assigned to the post via iteras_get_post_paywall_ids()
