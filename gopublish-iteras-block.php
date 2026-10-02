@@ -4,7 +4,7 @@
  * Description:       A block that reveals or hides inner content based on Iteras subscription access.
  * Requires at least: 6.1
  * Requires PHP:      7.4
- * Version:           0.5.0
+ * Version:           0.6.0
  * Author:            Retrofitter
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -56,6 +56,47 @@ if ( ! function_exists( 'gopublish_iteras_block_init' ) ) {
 	}
 }
 add_action( 'init', 'gopublish_iteras_block_init' );
+
+if ( ! function_exists( 'gopublish_iteras_enqueue_block_variations' ) ) {
+	/**
+	 * Enqueues this plugin's block variations independently of any single
+	 * block's own registration — they're a separate concern (they register
+	 * a variation of core/paragraph, not anything to do with the Iteras
+	 * Paywall or Iteras Login Status blocks), so they get their own load
+	 * path rather than riding along with one of those blocks' scripts.
+	 *
+	 * src/block-variations/block.json is a build-tooling marker only (it
+	 * gives wp-scripts an editorScript entry point to bundle from) and is
+	 * never passed to register_block_type() — the compiled script is
+	 * enqueued directly here instead, using the same index.asset.php
+	 * dependency/version manifest register_block_type() would otherwise
+	 * read automatically.
+	 */
+	function gopublish_iteras_enqueue_block_variations() {
+		$asset_file = __DIR__ . '/build/block-variations/index.asset.php';
+
+		if ( ! file_exists( $asset_file ) ) {
+			return;
+		}
+
+		$asset = require $asset_file;
+
+		wp_enqueue_script(
+			'gopublish-iteras-block-block-variations',
+			plugins_url( 'build/block-variations/index.js', __FILE__ ),
+			$asset['dependencies'],
+			$asset['version'],
+			true
+		);
+
+		wp_set_script_translations(
+			'gopublish-iteras-block-block-variations',
+			'gopublish-iteras-block',
+			plugin_dir_path( __FILE__ ) . 'languages'
+		);
+	}
+}
+add_action( 'enqueue_block_editor_assets', 'gopublish_iteras_enqueue_block_variations' );
 
 if ( ! function_exists( 'gopublish_iteras_block_editor_data' ) ) {
 	function gopublish_iteras_block_editor_data() {
