@@ -51,3 +51,38 @@ if ( ! function_exists( 'gopublish_iteras_register_paywall_label_binding' ) ) {
 	}
 }
 add_action( 'init', 'gopublish_iteras_register_paywall_label_binding' );
+
+/**
+ * "gopublish-iteras-block/customer-id" — resolves the current visitor's
+ * Iteras customer ID (iteras_get_customer_id(), see functions-iteras.php),
+ * read from their iteraspass cookie. Unlike the paywall-label source above,
+ * this is purely visitor-specific, not post-specific, so it needs no
+ * uses_context — the same value applies regardless of which post/page the
+ * bound block happens to be on.
+ *
+ * Returns '' when there's no valid pass (not logged in, forged, or
+ * expired) — deliberately bare, with no "not logged in" fallback text of
+ * its own. Paired with the "Iteras Customer ID" paragraph variation
+ * (src/block-variations/customer-id.js), which editors are expected to
+ * wrap, together with their own static text, inside an Iteras Login Status
+ * block (mode: logged in) — that's what actually hides the whole thing for
+ * logged-out visitors, not this binding.
+ */
+if ( ! function_exists( 'gopublish_iteras_customer_id_binding_callback' ) ) {
+	function gopublish_iteras_customer_id_binding_callback() {
+		return iteras_get_customer_id() ?? '';
+	}
+}
+
+if ( ! function_exists( 'gopublish_iteras_register_customer_id_binding' ) ) {
+	function gopublish_iteras_register_customer_id_binding() {
+		register_block_bindings_source(
+			'gopublish-iteras-block/customer-id',
+			[
+				'label'              => __( 'Iteras Customer ID', 'gopublish-iteras-block' ),
+				'get_value_callback' => 'gopublish_iteras_customer_id_binding_callback',
+			]
+		);
+	}
+}
+add_action( 'init', 'gopublish_iteras_register_customer_id_binding' );

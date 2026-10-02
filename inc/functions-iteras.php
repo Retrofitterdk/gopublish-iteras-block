@@ -328,3 +328,73 @@ if ( ! function_exists( '_iteras_pass_authorized' ) ) {
 		return false;
 	}
 }
+
+/**
+ * Returns the current visitor's Iteras customer ID, read directly from the
+ * signed iteraspass cookie — no API call needed.
+ *
+ * Iteras' own docs (https://app.iteras.dk/api/docs/guides/identity/) say
+ * the cookie "carries the access level and customer number", but neither
+ * Iteras' own pass_authorized() nor _iteras_pass_authorized() above ever
+ * reads it — both only parse access_levels|paywall_ids|expiry (indices 0-2
+ * of the pipe-separated data segment) and silently discard the rest. A real
+ * captured cookie confirmed the full format is actually:
+ *
+ *   {access_levels}|{paywall_ids}|{expiry}|{customer_id}|{client_ip}/{algo}:{hmac}
+ *
+ * This is the customer's account-level ID, not a per-subscription ID — one
+ * customer can have more than one active subscription; distinguishing
+ * those would need an API call to GET /api/customers/?id=... instead (see
+ * https://app.iteras.dk/api/docs/server/retrievingcustomers/).
+ *
+ * Verifies the HMAC signature and expiry first, same checks
+ * _iteras_pass_authorized() does — a forged or expired cookie never
+ * returns an ID, even though this doesn't itself grant or check access to
+ * anything.
+ *
+ * @return string|null Customer ID, or null when there's no valid pass.
+ */
+if ( ! function_exists( 'iteras_get_customer_id' ) ) {
+	function iteras_get_customer_id(): ?string {
+		if ( ! class_exists( 'Iteras' ) || empty( $_COOKIE['iteraspass'] ) ) {
+			return null;
+		}
+
+		$iteras      = Iteras::get_instance();
+		$signing_key = $iteras->settings['signing_key'] ?? '';
+		$pass        = sanitize_text_field( wp_unslash( $_COOKIE['iteraspass'] ) );
+
+		$pos = strrpos( $pass, '/' );
+		if ( $pos === false ) {
+			return null;
+		}
+
+		$data      = substr( $pass, 0, $pos );
+		$sig       = substr( $pass, $pos + 1 );
+		$sig_parts = explode( ':', $sig, 2 );
+		$algo_name = $sig_parts[0] ?? '';
+		$hmac      = $sig_parts[1] ?? '';
+
+		$algo = [ 'sha1' => 'sha1', 'sha256' => 'sha256' ][ $algo_name ] ?? null;
+		if ( ! $algo ) {
+			return null;
+		}
+
+		$computed_hmac = hash_hmac( $algo, $data, $signing_key );
+
+		// Skip HMAC verification when no signing key is configured (mirrors original behaviour).
+		if ( $computed_hmac !== false && $signing_key && ! hash_equals( $computed_hmac, $hmac ) ) {
+			return null;
+		}
+
+		$parts  = explode( '|', $data );
+		$expiry = strtotime( $parts[2] ?? '' );
+		if ( $expiry === false || $expiry < time() ) {
+			return null;
+		}
+
+		$customer_id = $parts[3] ?? '';
+
+		return $customer_id !== '' ? $customer_id : null;
+	}
+}

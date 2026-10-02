@@ -11,3 +11,4 @@
  * independent load path rather than being tacked onto an unrelated block.
  */
 import './paywall-label';
+import './customer-id';

@@ -35,33 +35,42 @@ gopublish-iteras-block/
 │   ├── functions-iteras.php          # Iteras access-check + CTA/label resolver helpers
 │   ├── admin-settings.php            # "Iteras Paywall CTA" settings screen (admin-only)
 │   ├── shortcode-paywall-cta.php     # [iteras-paywall-cta] shortcode
-│   ├── block-bindings.php            # "paywall-label" Block Bindings source
+│   ├── block-bindings.php            # "paywall-label" + "customer-id" Block Bindings sources
 │   └── post-content-layout-fix.php   # Keeps Iteras' auto paywall wrapper inside block-theme layout bounds
 ├── src/
-│   └── blocks/
-│       ├── iteras-paywall/
-│       │   ├── block.json            # Block metadata
-│       │   ├── index.js              # Block registration entry point
-│       │   ├── edit.js               # Editor component
-│       │   ├── save.js               # Save function
-│       │   ├── render.php            # Server-side render (access gate)
-│       │   ├── editor.scss           # Editor-only styles
-│       │   └── style.scss            # Frontend styles
-│       └── iteras-logged-in/         # Same file layout as iteras-paywall/ above
-│           └── ...                   # (block.json, index.js, edit.js, save.js, render.php, editor.scss, style.scss)
+│   ├── blocks/
+│   │   ├── iteras-paywall/
+│   │   │   ├── block.json            # Block metadata
+│   │   │   ├── index.js              # Block registration entry point
+│   │   │   ├── edit.js               # Editor component
+│   │   │   ├── save.js               # Save function
+│   │   │   ├── render.php            # Server-side render (access gate)
+│   │   │   ├── editor.scss           # Editor-only styles
+│   │   │   └── style.scss            # Frontend styles
+│   │   └── iteras-logged-in/         # Same file layout as iteras-paywall/ above
+│   │       └── ...                   # (block.json, index.js, edit.js, save.js, render.php, editor.scss, style.scss)
+│   └── block-variations/             # See "Block Variations" below — not a real block
+│       ├── block.json                # Build-tooling marker only, never register_block_type()'d
+│       ├── index.js                  # Shared entry point — imports every variation file below
+│       ├── paywall-label.js          # "Iteras Paywall Label" core/paragraph variation
+│       └── customer-id.js            # "Iteras Customer ID" core/paragraph variation
 ├── build/                            # Compiled assets (generated, do not edit)
 │   ├── blocks-manifest.php           # PHP block metadata manifest (WP 6.7+)
-│   └── blocks/
-│       ├── iteras-paywall/
-│       │   ├── block.json
-│       │   ├── index.js
-│       │   ├── index.css             # Compiled editor styles
-│       │   ├── index-rtl.css
-│       │   ├── style-index.css       # Compiled frontend styles
-│       │   ├── style-index-rtl.css
-│       │   ├── index.asset.php       # Dependency manifest
-│       │   └── render.php
-│       └── iteras-logged-in/         # Same file layout as iteras-paywall/ above
+│   ├── blocks/
+│   │   ├── iteras-paywall/
+│   │   │   ├── block.json
+│   │   │   ├── index.js
+│   │   │   ├── index.css             # Compiled editor styles
+│   │   │   ├── index-rtl.css
+│   │   │   ├── style-index.css       # Compiled frontend styles
+│   │   │   ├── style-index-rtl.css
+│   │   │   ├── index.asset.php       # Dependency manifest
+│   │   │   └── render.php
+│   │   └── iteras-logged-in/         # Same file layout as iteras-paywall/ above
+│   └── block-variations/
+│       ├── block.json                # Copied from src/ as-is, still inert
+│       ├── index.js                  # Compiled bundle of all variation files
+│       └── index.asset.php           # Dependency manifest, read manually (see "Block Variations")
 ├── languages/
 │   └── gopublish-iteras-block.pot   # Translation template
 ├── package.json
@@ -248,6 +257,27 @@ Validates the raw `iteraspass` cookie value against a list of paywall IDs. Repli
 3. Checks the pass expiry timestamp.
 4. Confirms at least one paywall ID in `$restriction` has `access_level = "sub"`.
 
+---
+
+### `iteras_get_customer_id()`
+
+Returns the current visitor's Iteras customer ID (their account number), read directly from the `iteraspass` cookie — no API call needed.
+
+The cookie's real format, confirmed from a live captured value, is
+`{access_levels}|{paywall_ids}|{expiry}|{customer_id}|{client_ip}/{algo}:{hmac}` — a superset of what both Iteras' own `pass_authorized()` and `_iteras_pass_authorized()` above actually read (they only use indices 0–2). This function runs the same signature and expiry checks as `_iteras_pass_authorized()`, then returns index 3 instead of doing the paywall-restriction check.
+
+This is the customer's *account-level* ID, not a per-subscription ID — one customer can have more than one active subscription. Getting a specific subscription ID would need a real API call to `GET https://app.iteras.dk/api/customers/?id=…` ([docs](https://app.iteras.dk/api/docs/server/retrievingcustomers/)), which this function deliberately avoids.
+
+**Returns** `string|null` — `null` when there's no cookie, the signature doesn't verify, or the pass has expired.
+
+**Usage**
+
+```php
+if ( function_exists( 'iteras_get_customer_id' ) ) {
+    $customer_id = iteras_get_customer_id(); // string or null
+}
+```
+
 ## Plugin dependency
 
 `gopublish-iteras-block.php` declares:
@@ -302,9 +332,13 @@ Registered on `init`. Meant to be dropped **once** into Iteras' own "Call-to-act
 
 Supersedes an earlier `[iteras-ordering-for-post]` shortcode, which resolved a plain Iteras "ordering ID" string instead of a whole pattern. If that tag is still present in Iteras' call-to-action field, replace it with `[iteras-paywall-cta]`.
 
-## Block Bindings: `gopublish-iteras-block/paywall-label` (`inc/block-bindings.php`)
+## Block Bindings (`inc/block-bindings.php`)
 
-Registered via `register_block_bindings_source()` on `init`, `uses_context: [ 'postId' ]` — the same mechanism (and the same pattern already used by `gopublish/featured-category` in Go:Publish Essentials) for binding a block's `content` attribute to per-post dynamic text instead of a static string. Typical use is a paragraph inside a reusable "post meta" pattern:
+Two `register_block_bindings_source()` sources, both registered on `init` — the same mechanism (and the same pattern already used by `gopublish/featured-category` in Go:Publish Essentials) for binding a block's `content` attribute to dynamic text instead of a static string.
+
+### `gopublish-iteras-block/paywall-label`
+
+`uses_context: [ 'postId' ]`, since the resolved text depends on *which post* the bound block is on. Typical use is a paragraph inside a reusable "post meta" pattern:
 
 ```
 <!-- wp:paragraph {"metadata":{"bindings":{"content":{"source":"gopublish-iteras-block/paywall-label"}}}} -->
@@ -318,6 +352,32 @@ Resolution order, via `gopublish_iteras_paywall_label_binding_callback()`:
 3. `__( 'Subscription', 'olfi' )` — a hardcoded built-in fallback, deliberately using the `olfi` theme's own text domain/string so it picks up whatever translation ("Abonnement" in Danish) that theme already ships, with no new translation entries needed.
 
 This binding always resolves to *some* text regardless of access status — it doesn't check `iteras_user_has_access_for_post()` itself. Whether the bound label is actually visible to a given reader is left to the theme/CSS (e.g. hiding it for posts the current visitor already has access to), matching how the original static label behaved.
+
+### `gopublish-iteras-block/customer-id`
+
+No `uses_context` — unlike the paywall label, this is purely visitor-specific, not post-specific; the same value applies regardless of which post/page the bound block is on. Callback is `gopublish_iteras_customer_id_binding_callback()`, a thin wrapper returning `iteras_get_customer_id() ?? ''`.
+
+Unlike the paywall-label source, this one resolves to `''` (not a fallback string) when the visitor isn't logged in with a valid pass — see "Block Variations" below for how the "Iteras Customer ID" variation expects to be composed with static text around it.
+
+## Block Variations (`src/block-variations/`)
+
+Two `core/paragraph` variations — editor-inserter-visible, pre-bound paragraphs, for dropping either Block Bindings source above into real post/page content, widgets, or anywhere else the block editor is used, not just theme patterns wired up in PHP.
+
+### Why they're loaded independently
+
+Block variations aren't tied to any one block's own lifecycle — registering them isn't the Iteras Paywall block's or Iteras Login Status block's concern, so they don't ride along with either block's compiled script. Instead:
+
+- `src/block-variations/block.json` exists purely as a **build-tooling marker**. `wp-scripts` discovers build entry points by scanning for files literally named `block.json` (hardcoded in `@wordpress/scripts/utils/config.js`, not configurable) — this file gives it an `editorScript` entry to bundle from, but is **never passed to `register_block_type()`**, so it's not a real block as far as WordPress itself is concerned. (Verified: `WP_Block_Type_Registry::get_instance()->is_registered( 'gopublish-iteras-block/block-variations' )` is `false`.)
+- `src/block-variations/index.js` is the real entry point — it just imports every variation file in the directory (currently `paywall-label.js` and `customer-id.js`). Add a variation by creating a new file here and importing it from `index.js`.
+- `gopublish_iteras_enqueue_block_variations()` in `gopublish-iteras-block.php` enqueues the compiled `build/block-variations/index.js` directly on `enqueue_block_editor_assets`, reading `index.asset.php` manually for its dependencies/version — since this never goes through `register_block_type()`, there's no automatic enqueue to rely on.
+
+### "Iteras Paywall Label"
+
+Bound to `gopublish-iteras-block/paywall-label`. Defaults to the `paywalled` className so it inherits the same CSS that hides it for readers who already have access (`.has-access .paywalled { display: none }`, see the theme's `src/scss/pages/post.scss`) — without that class, the resolved label would show to everyone, access or not, since the binding itself always resolves to *some* text.
+
+### "Iteras Customer ID"
+
+Bound to `gopublish-iteras-block/customer-id`. Resolves to the bare customer ID (e.g. `251848`) or an empty string — no fallback text, no auto-composed sentence. Since a block binding replaces a block's entire `content` attribute, it can't fill in just one word inside a sentence typed around it — to build something like "You're logged in with customer number 251848", wrap this block together with your own static text paragraph inside an **Iteras Login Status** block (set to "logged in"). That hides the whole group as one unit for logged-out visitors, rather than leaving the static text stranded with nothing after it.
 
 ## Building
 

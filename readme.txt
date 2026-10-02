@@ -3,7 +3,7 @@ Contributors:      retrofitter
 Tags:              iteras, paywall, subscription, access control, block
 Requires at least: 6.5
 Tested up to:      7.0
-Stable tag:        0.6.0
+Stable tag:        0.7.0
 Requires PHP:      7.4
 Requires Plugins:  iteras
 License:           GPL-2.0-or-later
@@ -62,6 +62,12 @@ Unlike the Iteras Paywall block, this block is deliberately unscoped — it alwa
 
 Like the shortcodes it replaces, WordPress users with the `edit_pages` capability always see the content in either mode, and the block fails open (content always shown) when Iteras' server-side validation setting is disabled.
 
+**Showing a subscriber's customer ID**
+
+The plugin can also display a visitor's Iteras customer ID (their account number) directly in post/page content, a widget, or anywhere else the block editor is used — read straight from their signed `iteraspass` cookie, no API call needed. Search for **"Iteras Customer ID"** in the block inserter: it's a paragraph pre-bound to the `gopublish-iteras-block/customer-id` Block Bindings source, resolving to the bare ID (e.g. `251848`) or nothing at all if the visitor isn't logged in with a valid pass.
+
+Because a block binding can only replace a whole block's content, not fill in one word inside a sentence, this block won't compose something like "You're logged in with customer number 251848" by itself. Wrap it together with your own static text paragraph inside an **Iteras Login Status** block (set to "logged in") — that hides the whole group together for logged-out visitors, rather than leaving your static text showing with nothing after it.
+
 == Installation ==
 
 1. Ensure the Iteras plugin is installed and activated.
@@ -115,7 +121,19 @@ Iteras Paywall gates content by a *specific* paywall (defaulting to the current 
 
 No, by design. An earlier version allowed this, but combined with the block's "visitors who are NOT logged in" mode it produced a negated-OR condition ("shown to everyone except visitors who qualify for at least one of the checked paywalls") that was too easy to get backwards. Use the Iteras Paywall block for paywall-specific gating instead.
 
+= Is the customer ID trustworthy, or could a visitor fake it? =
+
+It's trustworthy. `iteras_get_customer_id()` verifies the `iteraspass` cookie's HMAC signature and checks it hasn't expired before returning anything — a forged or tampered cookie returns nothing at all, the same way a forged pass fails the normal access check.
+
+= Where does the customer ID actually come from? =
+
+It's read directly out of the `iteraspass` cookie, which turns out to carry more than this plugin originally parsed out of it. Iteras' own docs describe the cookie as carrying "the access level and customer number", and a real captured cookie confirmed the full format: `{access_levels}|{paywall_ids}|{expiry}|{customer_id}|{client_ip}/{algo}:{hmac}`. No API call to Iteras is made.
+
 == Changelog ==
+
+= 0.7.0 =
+* Add `iteras_get_customer_id()` helper — reads the visitor's Iteras customer ID directly from their signed `iteraspass` cookie (no API call), verifying the HMAC signature and expiry first.
+* Add a `gopublish-iteras-block/customer-id` Block Bindings source and an "Iteras Customer ID" paragraph variation, for displaying a subscriber's customer ID anywhere the block editor is used.
 
 = 0.6.0 =
 * `[iteras-paywall-cta]` now renders a resolved synced pattern directly (`get_post()` + `do_blocks()` + `do_shortcode()`) instead of routing through a `[synced_pattern]` shortcode previously provided by the active theme. That theme shortcode had no other callers left and has since been removed — this plugin no longer depends on the theme for this feature.
