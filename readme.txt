@@ -3,7 +3,7 @@ Contributors:      retrofitter
 Tags:              iteras, paywall, subscription, access control, block
 Requires at least: 6.5
 Tested up to:      7.0
-Stable tag:        0.5.0
+Stable tag:        0.6.0
 Requires PHP:      7.4
 Requires Plugins:  iteras
 License:           GPL-2.0-or-later
@@ -116,6 +116,9 @@ Iteras Paywall gates content by a *specific* paywall (defaulting to the current 
 No, by design. An earlier version allowed this, but combined with the block's "visitors who are NOT logged in" mode it produced a negated-OR condition ("shown to everyone except visitors who qualify for at least one of the checked paywalls") that was too easy to get backwards. Use the Iteras Paywall block for paywall-specific gating instead.
 
 == Changelog ==
+
+= 0.6.0 =
+* `[iteras-paywall-cta]` now renders a resolved synced pattern directly (`get_post()` + `do_blocks()` + `do_shortcode()`) instead of routing through a `[synced_pattern]` shortcode previously provided by the active theme. That theme shortcode had no other callers left and has since been removed — this plugin no longer depends on the theme for this feature.
 
 = 0.5.0 =
 * Add "Iteras Login Status" block — a block equivalent of `[iteras-if-logged-in]` / `[iteras-if-not-logged-in]` for use where shortcodes aren't usable, with a "Show content to: logged in / not logged in" toggle. Deliberately unscoped (no per-paywall restriction) to avoid a confusing negated-OR condition; use the Iteras Paywall block for paywall-specific gating.

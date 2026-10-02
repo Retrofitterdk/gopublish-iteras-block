@@ -296,7 +296,9 @@ Registered on `init`. Meant to be dropped **once** into Iteras' own "Call-to-act
 
 1. Returns `''` immediately if Iteras isn't active, or if the current visitor already has access (`iteras_user_has_access_for_post()`) — nothing to sell.
 2. Resolves `iteras_get_paywall_cta_pattern_id_for_post()`; if `null` (ambiguous/unmapped), falls back to `iteras_get_default_paywall_cta_pattern_id()`.
-3. If a pattern ID was resolved either way, renders it via the theme's `[synced_pattern id="…"]` shortcode (`do_shortcode()`); otherwise returns `''`.
+3. If a pattern ID was resolved either way, loads that `wp_block` post directly (`get_post()`, after checking it's a published `wp_block`) and renders its content with `do_shortcode( do_blocks( $pattern->post_content ) )` — `do_blocks()` alone won't process a shortcode embedded inside the pattern (e.g. `[iteras-ordering]`), hence the `do_shortcode()` wrapper. Otherwise returns `''`.
+
+   (An earlier version routed this through the theme's own `[synced_pattern id="…"]` shortcode instead of rendering directly — that shortcode has since been removed as unused, since this was its only remaining caller.)
 
 Supersedes an earlier `[iteras-ordering-for-post]` shortcode, which resolved a plain Iteras "ordering ID" string instead of a whole pattern. If that tag is still present in Iteras' call-to-action field, replace it with `[iteras-paywall-cta]`.
 
