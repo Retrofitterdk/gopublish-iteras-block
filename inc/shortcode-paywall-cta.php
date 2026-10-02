@@ -8,8 +8,10 @@
  * shown to unlock the post it renders inside — the pattern assigned to its
  * paywall under Settings -> Iteras Paywall CTA, or that screen's "Default"
  * pattern when the post's paywall IDs don't resolve to exactly one — and
- * renders it via the theme's existing [synced_pattern] shortcode
- * (wp-content/themes/olfi/inc/shortcodes.php).
+ * renders that pattern's block content directly (get_post() + do_blocks(),
+ * with do_shortcode() over the result so any shortcode embedded inside the
+ * pattern, e.g. [iteras-ordering], still renders — do_blocks() alone won't
+ * process that).
  *
  * Renamed from the earlier [iteras-ordering-for-post] shortcode, which
  * resolved a plain Iteras ordering ID instead of a whole pattern. If that
@@ -35,16 +37,25 @@ if ( ! function_exists( 'iteras_paywall_cta_shortcode' ) ) {
 		}
 
 		$pattern_id = iteras_get_paywall_cta_pattern_id_for_post();
-
 		if ( ! $pattern_id ) {
 			$pattern_id = iteras_get_default_paywall_cta_pattern_id();
 		}
-
 		if ( ! $pattern_id ) {
 			return '';
 		}
 
-		return do_shortcode( '[synced_pattern id="' . absint( $pattern_id ) . '"]' );
+		$pattern = get_post( (int) $pattern_id );
+		if ( ! $pattern || 'wp_block' !== $pattern->post_type || 'publish' !== $pattern->post_status ) {
+			return '';
+		}
+
+		// do_blocks() alone only renders block markup — it doesn't process any
+		// shortcode text sitting inside it (e.g. a Shortcode block, or a
+		// shortcode typed directly into a paragraph). WordPress's own the_content
+		// pipeline runs do_blocks (priority 9) then do_shortcode (priority 11) as
+		// two separate steps over the same string; mirror that here so nested
+		// shortcodes inside a synced pattern actually render.
+		return do_shortcode( do_blocks( $pattern->post_content ) );
 	}
 }
 
