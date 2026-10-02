@@ -1,0 +1,9 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gopublish-iteras-block/block-variations",
+	"title": "Iteras Block Variations (internal, not a real block)",
+	"description": "Exists only so the build tooling (wp-scripts) discovers and bundles this directory's editor-only JavaScript, which registers block variations such as the Iteras Paywall Label paragraph variation. Never passed to register_block_type() — see gopublish_iteras_enqueue_block_variations() in gopublish-iteras-block.php, which enqueues the compiled script directly instead.",
+	"editorScript": "file:./index.js",
+	"textdomain": "gopublish-iteras-block"
+}
