@@ -53,9 +53,11 @@ add_action( 'init', 'gopublish_iteras_cta_register_pattern_category', 20 );
 /**
  * One-time migration from the old "Iteras Ordering" screen: seeds the new
  * option's Default pattern from whatever synced pattern the old free-text
- * fallback CTA already pointed at (e.g. "[synced_pattern id="31736"]"), so
- * the site doesn't lose its fallback CTA mid-rollout. No-ops once the new
- * option exists — this never overwrites deliberate configuration.
+ * fallback CTA already pointed at (e.g. "[synced_pattern id="31736"]" —
+ * historical format only; that shortcode itself no longer exists, this
+ * just parses the leftover text to recover the pattern ID), so the site
+ * doesn't lose its fallback CTA mid-rollout. No-ops once the new option
+ * exists — this never overwrites deliberate configuration.
  */
 if ( ! function_exists( 'gopublish_iteras_cta_maybe_migrate' ) ) {
 	function gopublish_iteras_cta_maybe_migrate() {
