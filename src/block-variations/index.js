@@ -12,3 +12,4 @@
  */
 import './paywall-label';
 import './customer-id';
+import './login-button';
