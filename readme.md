@@ -15,16 +15,13 @@ WordPress 6.5 is the minimum because the `Requires Plugins` dependency header �
 
 ## How it works
 
-The plugin ships two dynamic container blocks — **Iteras Paywall** and **Iteras Login Status** — plus a settings screen, a shortcode, and a Block Bindings source for driving Iteras' own inline paywall (see further down). Both blocks work the same way: editors place any inner blocks (text, images, embeds, etc.) inside them, and on the frontend `render.php` runs an access check on every page load:
+The plugin ships three real blocks — **Iteras Paywall**, **Iteras Login Status**, and **Iteras Logout Button** — plus three Block Bindings-powered variations, a settings screen, a shortcode, and a Block Bindings source for driving Iteras' own inline paywall (see further down).
 
-- If the check passes → the inner blocks are rendered.
-- If it doesn't → the block outputs nothing.
+The first two are dynamic container blocks that work the same way: editors place any inner blocks (text, images, embeds, etc.) inside them, and on the frontend `render.php` runs an access check on every page load — if it passes, the inner blocks render; if not, the block outputs nothing. They differ in *what* they check: Iteras Paywall gates by a specific paywall (defaulting to the current post's own assigned paywall(s)); Iteras Login Status answers the simpler, unscoped question "does this visitor hold a valid Iteras pass for anything at all". That access check is enforced entirely in PHP using the visitor's `iteraspass` cookie — no JavaScript involved.
 
-They differ in *what* they check: Iteras Paywall gates by a specific paywall (defaulting to the current post's own assigned paywall(s)); Iteras Login Status answers the simpler, unscoped question "does this visitor hold a valid Iteras pass for anything at all" — see each block's own section below for the distinction and when to use which.
+Iteras Logout Button is different in kind: logging a visitor out isn't a value to check or render, it's an action that has to run in the browser on click, via Iteras' own client-side `Iteras.logoutFromWall()` JavaScript API. It's the plugin's first use of a block `viewScript` (a frontend-only script, auto-loaded by WordPress only on pages that actually contain the block) — see its own section below.
 
-Access is enforced entirely in PHP using the visitor's `iteraspass` cookie. No JavaScript is involved in the access check.
-
-In the block editor, inner content is always visible. Editors with the `edit_pages` capability are unconditionally granted access, consistent with the `[iteras-if-logged-in]` shortcode's own behaviour.
+In the block editor, inner content of the two access-gated blocks is always visible. Editors with the `edit_pages` capability are unconditionally granted access, consistent with the `[iteras-if-logged-in]` shortcode's own behaviour.
 
 ## Plugin structure
 
@@ -33,9 +30,9 @@ gopublish-iteras-block/
 ├── gopublish-iteras-block.php        # Plugin entry point
 ├── inc/
 │   ├── functions-iteras.php          # Iteras access-check + CTA/label resolver helpers
-│   ├── admin-settings.php            # "Iteras Paywall CTA" settings screen (admin-only)
+│   ├── admin-settings.php            # "Iteras Paywall CTA" settings screen + reveals Iteras' hidden user_url field (admin-only)
 │   ├── shortcode-paywall-cta.php     # [iteras-paywall-cta] shortcode
-│   ├── block-bindings.php            # "paywall-label" + "customer-id" Block Bindings sources
+│   ├── block-bindings.php            # "paywall-label" + "customer-id" + "login-url" Block Bindings sources
 │   └── post-content-layout-fix.php   # Keeps Iteras' auto paywall wrapper inside block-theme layout bounds
 ├── src/
 │   ├── blocks/
@@ -47,13 +44,22 @@ gopublish-iteras-block/
 │   │   │   ├── render.php            # Server-side render (access gate)
 │   │   │   ├── editor.scss           # Editor-only styles
 │   │   │   └── style.scss            # Frontend styles
-│   │   └── iteras-logged-in/         # Same file layout as iteras-paywall/ above
-│   │       └── ...                   # (block.json, index.js, edit.js, save.js, render.php, editor.scss, style.scss)
+│   │   ├── iteras-logged-in/         # Same file layout as iteras-paywall/ above
+│   │   │   └── ...                   # (block.json, index.js, edit.js, save.js, render.php, editor.scss, style.scss)
+│   │   └── iteras-logout/
+│   │       ├── block.json            # Declares both editorScript and viewScript
+│   │       ├── index.js              # Block registration entry point
+│   │       ├── edit.js               # Editor component (RichText label + toolbar Link UI)
+│   │       ├── save.js               # Save function — fully static output, no render.php needed
+│   │       ├── view.js               # Frontend-only script — wires up Iteras.logoutFromWall() on click
+│   │       ├── editor.scss           # Editor-only styles
+│   │       └── style.scss            # Frontend styles
 │   └── block-variations/             # See "Block Variations" below — not a real block
 │       ├── block.json                # Build-tooling marker only, never register_block_type()'d
 │       ├── index.js                  # Shared entry point — imports every variation file below
 │       ├── paywall-label.js          # "Iteras Paywall Label" core/paragraph variation
-│       └── customer-id.js            # "Iteras Customer ID" core/paragraph variation
+│       ├── customer-id.js            # "Iteras Customer ID" core/paragraph variation
+│       └── login-button.js           # "Iteras Login Button" core/button variation
 ├── build/                            # Compiled assets (generated, do not edit)
 │   ├── blocks-manifest.php           # PHP block metadata manifest (WP 6.7+)
 │   ├── blocks/
@@ -66,7 +72,16 @@ gopublish-iteras-block/
 │   │   │   ├── style-index-rtl.css
 │   │   │   ├── index.asset.php       # Dependency manifest
 │   │   │   └── render.php
-│   │   └── iteras-logged-in/         # Same file layout as iteras-paywall/ above
+│   │   ├── iteras-logged-in/         # Same file layout as iteras-paywall/ above
+│   │   └── iteras-logout/
+│   │       ├── block.json
+│   │       ├── index.js              # Editor bundle
+│   │       ├── view.js               # Frontend bundle — separate entry, separate asset.php
+│   │       ├── index.asset.php
+│   │       ├── view.asset.php
+│   │       ├── index.css
+│   │       ├── style-index.css
+│   │       └── style-index-rtl.css
 │   └── block-variations/
 │       ├── block.json                # Copied from src/ as-is, still inert
 │       ├── index.js                  # Compiled bundle of all variation files
@@ -149,6 +164,45 @@ A single **RadioControl** in the sidebar: "Show content to" → *visitors who ar
 2. **Current user has `edit_pages`** → content is always shown, in either mode. This is the subtle one: naively calling `iteras_user_has_access()` (which has its own internal editor bypass returning `true`) and then inverting that for `'not-logged-in'` mode would incorrectly *hide* content from editors in that mode. Editors must see the content regardless of which mode is selected, exactly like the shortcodes.
 
 Only once both of those are ruled out does it evaluate `iteras_user_has_access()` and compare against `showWhen`.
+
+## The Iteras Logout Button block
+
+**Block name:** `gopublish-iteras-block/iteras-logout`
+**Category:** Design
+**Type:** Static (save-only — no `render.php`; unlike the other two blocks, this one's output doesn't depend on an access check, so there's nothing for PHP to gate)
+
+Logs the current visitor out of their Iteras subscription pass, via Iteras' own client-side `Iteras.logoutFromWall()` JavaScript API ([docs](https://app.iteras.dk/api/docs/js/paywall/)). This block doesn't fit the pattern of the other two — logging out isn't a value to render or check, it's an action that has to run in the browser on click — so it's the plugin's first use of a block `viewScript`, a frontend-only script WordPress auto-loads only on pages that actually contain the block (confirmed via `WP_Block_Type::view_script_handles` / `register_block_script_handle()` in `wp-includes/blocks.php` — standard core mechanism, no custom enqueue code needed, unlike Block Variations' `editorScript`).
+
+### Attributes
+
+| Attribute | Type | Default | Description |
+|---|---|---|---|
+| `text` | `string` | `'Log out'` | Button label, editable in-canvas via `RichText`. |
+| `url` | `string` | `''` | Optional redirect destination after logging out. |
+
+### Editor controls
+
+No Inspector panel. `url` is set via the same toolbar Link button + `LinkControl` popover `core/button` itself uses (`__experimentalLinkControl` from `@wordpress/block-editor`) — deliberately reused rather than a custom sidebar field, so editing it uses UI muscle memory people already have from every other button/link in WordPress, instead of a field that's easy to miss. Icons are plain dashicon slug strings (`"admin-links"` / `"editor-unlink"`), not `@wordpress/icons` imports — that package isn't installed as a local devDependency in this plugin (unlike `@wordpress/block-editor`, which `wp-scripts`' dependency-extraction can resolve as a build-time external without the package being present locally), so importing from it fails the build.
+
+### `view.js` and the fallback redirect
+
+```js
+button.addEventListener( 'click', function () {
+    if ( typeof window.Iteras === 'undefined' || typeof window.Iteras.logoutFromWall !== 'function' ) {
+        return;
+    }
+    var redirect = button.dataset.redirect || window.location.href;
+    window.Iteras.logoutFromWall( { redirect: redirect } );
+} );
+```
+
+Always passes an explicit `redirect` — never calls `logoutFromWall()` with no options. Iteras' own docs say omitting `redirect` reloads the current page by default, but that was tested directly (calling it manually from the browser console on a real page with no active `Iteras.wall()` instance — e.g. a plain login page): the cookie cleared correctly, but the promised reload never fired, with no error and no visible feedback. Passing an explicit `redirect` — even just the current page's own URL — was confirmed reliable in the same test. So: use the link set via the toolbar if there is one, otherwise fall back to `window.location.href`, which reproduces the "stay here, just refreshed" behaviour the undocumented default was supposed to provide, without depending on it.
+
+The `typeof window.Iteras === 'undefined'` check is a runtime guard, not a build-time script dependency on Iteras' own `iteras-api-script` handle (enqueued by the Iteras plugin itself, not something `wp-scripts` can auto-detect for this file's `view.asset.php`). In practice there's no real race to guard against: the check only matters at the moment of *click*, and a visitor can't click the button before the page — and every script on it, including Iteras' externally-hosted one — has finished loading.
+
+### Composability
+
+No built-in visibility logic, same reasoning as Iteras Customer ID: wrap it in an **Iteras Login Status** block (mode: logged in) if it should only appear for visitors who are actually logged in, rather than duplicating that check into every new block.
 
 ## Helper functions (`inc/functions-iteras.php`)
 
@@ -359,16 +413,27 @@ No `uses_context` — unlike the paywall label, this is purely visitor-specific,
 
 Unlike the paywall-label source, this one resolves to `''` (not a fallback string) when the visitor isn't logged in with a valid pass — see "Block Variations" below for how the "Iteras Customer ID" variation expects to be composed with static text around it.
 
+### `gopublish-iteras-block/login-url`
+
+No `uses_context` either. Callback is `gopublish_iteras_login_url_binding_callback()`, which resolves the URL to Iteras' own login page with a return-to parameter appended, so a visitor who logs in there lands back on whichever page they came from:
+
+1. Reads `Iteras::get_instance()->settings['user_url']` — the **"User landing page"** setting, deliberately *not* `subscribe_url`. Iteras documents `subscribe_url` as serving both "logging in" and "becoming a paying subscriber"; sending an already-subscribed visitor there means landing on another subscribe pitch right after the paywall call-to-action they just saw. `user_url` is a separate, login-only destination for exactly this case — see the next point.
+2. `user_url` is hidden by default on Iteras' own settings screen (an inline `style="display: none"` on its `<tr>`, `iteras/admin/views/admin.php:92`) even though it's fully functional — its value is already read and saved by Iteras' own `save_settings_form()`. `gopublish_iteras_reveal_user_url_field()` in `inc/admin-settings.php` reveals it with a small CSS override (`tr:has(#userurl) { display: table-row !important; }`) scoped to Iteras' settings screen only, via the `admin_head-settings_page_iteras` action — rather than editing Iteras' own file, which would get wiped on its next update.
+3. If `user_url` is empty, returns `''` — no fallback to `subscribe_url`, since that would quietly reintroduce the "lands on a subscribe pitch" problem this is meant to avoid.
+4. Otherwise calls `Iteras::return_to_page_shortcode( [ 'url' => $login_url ] )` directly — the exact public method backing Iteras' own `[iteras-return-to-page]` shortcode, reused rather than reimplementing its `iterasnext`/`urlencode( REQUEST_URI )` logic.
+
+Note: calling that method on a URL with no existing query string triggers a harmless PHP "Undefined array key 'query'" warning inside Iteras' *own* code (debug-log only, the returned URL is still correct) — tried pre-empting it by appending a bare `?` first, but that flips a different branch of Iteras' own logic and produces a real bug (`?&iterasnext=...`), so it's left alone.
+
 ## Block Variations (`src/block-variations/`)
 
-Two `core/paragraph` variations — editor-inserter-visible, pre-bound paragraphs, for dropping either Block Bindings source above into real post/page content, widgets, or anywhere else the block editor is used, not just theme patterns wired up in PHP.
+Three variations — editor-inserter-visible, pre-bound blocks, for dropping any Block Bindings source above into real post/page content, widgets, or anywhere else the block editor is used, not just theme patterns wired up in PHP.
 
 ### Why they're loaded independently
 
 Block variations aren't tied to any one block's own lifecycle — registering them isn't the Iteras Paywall block's or Iteras Login Status block's concern, so they don't ride along with either block's compiled script. Instead:
 
 - `src/block-variations/block.json` exists purely as a **build-tooling marker**. `wp-scripts` discovers build entry points by scanning for files literally named `block.json` (hardcoded in `@wordpress/scripts/utils/config.js`, not configurable) — this file gives it an `editorScript` entry to bundle from, but is **never passed to `register_block_type()`**, so it's not a real block as far as WordPress itself is concerned. (Verified: `WP_Block_Type_Registry::get_instance()->is_registered( 'gopublish-iteras-block/block-variations' )` is `false`.)
-- `src/block-variations/index.js` is the real entry point — it just imports every variation file in the directory (currently `paywall-label.js` and `customer-id.js`). Add a variation by creating a new file here and importing it from `index.js`.
+- `src/block-variations/index.js` is the real entry point — it just imports every variation file in the directory (currently `paywall-label.js`, `customer-id.js`, and `login-button.js`). Add a variation by creating a new file here and importing it from `index.js`.
 - `gopublish_iteras_enqueue_block_variations()` in `gopublish-iteras-block.php` enqueues the compiled `build/block-variations/index.js` directly on `enqueue_block_editor_assets`, reading `index.asset.php` manually for its dependencies/version — since this never goes through `register_block_type()`, there's no automatic enqueue to rely on.
 
 ### "Iteras Paywall Label"
@@ -378,6 +443,10 @@ Bound to `gopublish-iteras-block/paywall-label`. Defaults to the `paywalled` cla
 ### "Iteras Customer ID"
 
 Bound to `gopublish-iteras-block/customer-id`. Resolves to the bare customer ID (e.g. `251848`) or an empty string — no fallback text, no auto-composed sentence. Since a block binding replaces a block's entire `content` attribute, it can't fill in just one word inside a sentence typed around it — to build something like "You're logged in with customer number 251848", wrap this block together with your own static text paragraph inside an **Iteras Login Status** block (set to "logged in"). That hides the whole group as one unit for logged-out visitors, rather than leaving the static text stranded with nothing after it.
+
+### "Iteras Login Button"
+
+A `core/button` variation, not a paragraph — binds only the `url` attribute to `gopublish-iteras-block/login-url`, leaving `text` completely free to edit. `core/button` is one of the block/attribute pairs WordPress core itself supports for bindings (`wp-includes/block-bindings.php`), confirmed before building on it. Because the dynamic part (the link) and the static part (the label) are two separate attributes here, there's none of the "bare value vs. full sentence" tradeoff the paragraph-based variations above have to deal with — type whatever button text makes sense ("Log in", "Already a subscriber?", etc.) and the link resolves independently.
 
 ## Building
 

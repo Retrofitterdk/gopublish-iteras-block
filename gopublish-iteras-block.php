@@ -4,7 +4,7 @@
  * Description:       A block that reveals or hides inner content based on Iteras subscription access.
  * Requires at least: 6.1
  * Requires PHP:      7.4
- * Version:           0.7.0
+ * Version:           0.9.0
  * Author:            Retrofitter
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -41,6 +41,7 @@ if ( ! function_exists( 'gopublish_iteras_block_init' ) ) {
 
 		register_block_type( __DIR__ . '/build/blocks/iteras-paywall' );
 		register_block_type( __DIR__ . '/build/blocks/iteras-logged-in' );
+		register_block_type( __DIR__ . '/build/blocks/iteras-logout' );
 
 		wp_set_script_translations(
 			'gopublish-iteras-block-iteras-paywall-editor-script',
@@ -50,6 +51,12 @@ if ( ! function_exists( 'gopublish_iteras_block_init' ) ) {
 
 		wp_set_script_translations(
 			'gopublish-iteras-block-iteras-logged-in-editor-script',
+			'gopublish-iteras-block',
+			plugin_dir_path( __FILE__ ) . 'languages'
+		);
+
+		wp_set_script_translations(
+			'gopublish-iteras-block-iteras-logout-editor-script',
 			'gopublish-iteras-block',
 			plugin_dir_path( __FILE__ ) . 'languages'
 		);

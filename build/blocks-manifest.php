@@ -59,6 +59,53 @@ return array(
 		'style' => 'file:./style-index.css',
 		'render' => 'file:./render.php'
 	),
+	'iteras-logout' => array(
+		'$schema' => 'https://schemas.wp.org/trunk/block.json',
+		'apiVersion' => 3,
+		'name' => 'gopublish-iteras-block/iteras-logout',
+		'version' => '0.1.0',
+		'title' => 'Iteras Logout Button',
+		'category' => 'design',
+		'icon' => 'exit',
+		'description' => 'A button that logs the current visitor out of their Iteras subscription pass, via Iteras\' own client-side Iteras.logoutFromWall() JavaScript API. Add a link via the toolbar (same as any button) to redirect somewhere specific after logging out; otherwise it reloads the current page.',
+		'keywords' => array(
+			'iteras',
+			'logout',
+			'log out',
+			'sign out',
+			'subscription'
+		),
+		'attributes' => array(
+			'text' => array(
+				'type' => 'string',
+				'default' => 'Log out'
+			),
+			'url' => array(
+				'type' => 'string',
+				'default' => ''
+			)
+		),
+		'supports' => array(
+			'html' => false,
+			'color' => array(
+				'background' => true,
+				'text' => true
+			),
+			'spacing' => array(
+				'margin' => true,
+				'padding' => true
+			),
+			'align' => array(
+				'wide',
+				'full'
+			)
+		),
+		'textdomain' => 'gopublish-iteras-block',
+		'editorScript' => 'file:./index.js',
+		'editorStyle' => 'file:./index.css',
+		'style' => 'file:./style-index.css',
+		'viewScript' => 'file:./view.js'
+	),
 	'iteras-paywall' => array(
 		'$schema' => 'https://schemas.wp.org/trunk/block.json',
 		'apiVersion' => 3,

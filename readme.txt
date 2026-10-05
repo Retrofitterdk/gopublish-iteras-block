@@ -3,7 +3,7 @@ Contributors:      retrofitter
 Tags:              iteras, paywall, subscription, access control, block
 Requires at least: 6.5
 Tested up to:      7.0
-Stable tag:        0.7.0
+Stable tag:        0.9.0
 Requires PHP:      7.4
 Requires Plugins:  iteras
 License:           GPL-2.0-or-later
@@ -68,6 +68,18 @@ The plugin can also display a visitor's Iteras customer ID (their account number
 
 Because a block binding can only replace a whole block's content, not fill in one word inside a sentence, this block won't compose something like "You're logged in with customer number 251848" by itself. Wrap it together with your own static text paragraph inside an **Iteras Login Status** block (set to "logged in") — that hides the whole group together for logged-out visitors, rather than leaving your static text showing with nothing after it.
 
+**A login button that remembers where visitors came from**
+
+Iteras has its own `[iteras-return-to-page]` shortcode for building a login link that redirects back to the originating page afterwards — but a shortcode can't become a button's link through the visual editor, which makes it awkward to use inside synced patterns built for a paywall call-to-action. Search for **"Iteras Login Button"** in the block inserter instead: it's a regular Button block with only its link bound (not its text, which stays fully editable), pointing at Iteras' login page with the return-to parameter already appended.
+
+It deliberately links to Iteras' **"User landing page"** setting, not **"Subscribe landing page"** — the latter is documented by Iteras as serving both logging in and becoming a paying subscriber, so sending an already-subscribed visitor there means landing on another subscribe pitch right after the paywall call-to-action they just saw. The "User landing page" field is normally hidden on Iteras' own settings screen; this plugin reveals it there (a small CSS tweak, not an edit to Iteras' own files) specifically so it can be configured for this button.
+
+**A logout button**
+
+Add the **Iteras Logout Button** block anywhere to let a subscriber log out, via Iteras' own client-side `Iteras.logoutFromWall()` JavaScript function. It's a real button: click the link icon in its toolbar — same as any other button — to set where it should redirect afterwards, or leave it blank and it reloads the current page. No API call is involved; this runs entirely in the visitor's browser.
+
+This block deliberately always tells Iteras exactly where to redirect, rather than relying on Iteras' own documented "reload the page by default" behaviour — testing showed that default doesn't reliably fire on a page with no active paywall script running (e.g. a plain login page): the visitor's pass cleared correctly, but nothing visibly happened afterwards. Always specifying a destination (the one set via the toolbar, or the current page's own address) avoids that silent dead end.
+
 == Installation ==
 
 1. Ensure the Iteras plugin is installed and activated.
@@ -129,7 +141,27 @@ It's trustworthy. `iteras_get_customer_id()` verifies the `iteraspass` cookie's 
 
 It's read directly out of the `iteraspass` cookie, which turns out to carry more than this plugin originally parsed out of it. Iteras' own docs describe the cookie as carrying "the access level and customer number", and a real captured cookie confirmed the full format: `{access_levels}|{paywall_ids}|{expiry}|{customer_id}|{client_ip}/{algo}:{hmac}`. No API call to Iteras is made.
 
+= Why does the Iteras Login Button use "User landing page" instead of "Subscribe landing page"? =
+
+Because the button is meant for an "already a subscriber? log in here" context, typically sitting right next to a paywall call-to-action that's already trying to sell a subscription. Iteras documents "Subscribe landing page" (`subscribe_url`) as serving both logging in *and* becoming a paying subscriber — sending an existing subscriber there feels circular, landing them on another subscribe pitch. "User landing page" (`user_url`) is a separate, login-only destination for exactly this case. It's hidden by default on Iteras' own settings screen; this plugin reveals it there so it can actually be configured.
+
+= If I leave "User landing page" empty, does the login button fall back to "Subscribe landing page"? =
+
+No, deliberately not — it just renders with no link at all. A fallback would quietly reintroduce the same "lands on a subscribe pitch" problem the button exists to avoid. Fill in Iteras' "User landing page" field (now visible under Settings → ITERAS) to activate it.
+
+= I clicked the Iteras Logout Button and nothing seemed to happen — is it broken? =
+
+Probably not — check whether the visitor's `iteraspass` cookie actually cleared (DevTools → Application → Cookies) before assuming it's broken. In testing, the button reliably logs the visitor out even when nothing visibly changes on screen, because Iteras' own "reload the page by default" behaviour doesn't always fire. As of the current version this block always sets an explicit redirect itself (the link you set via its toolbar, or the current page as a fallback) specifically to avoid that silent case — if you're still seeing no visible change, check that you're on an up-to-date version of this plugin.
+
 == Changelog ==
+
+= 0.9.0 =
+* Add the "Iteras Logout Button" block — a real button (click its toolbar link icon to set where it redirects to, same as any other button) that logs a subscriber out via Iteras' own client-side `Iteras.logoutFromWall()`. The plugin's first use of a block `viewScript` (a frontend-only script, auto-loaded only on pages containing the block).
+* The button always passes an explicit redirect destination rather than relying on Iteras' documented "reload by default" behaviour, which testing showed doesn't reliably fire on pages with no active paywall script (e.g. a plain login page).
+
+= 0.8.0 =
+* Add a `gopublish-iteras-block/login-url` Block Bindings source and an "Iteras Login Button" core/button variation — a login link to Iteras' "User landing page", with a return-to parameter appended, usable anywhere the block editor is used (including inside synced patterns, unlike Iteras' own `[iteras-return-to-page]` shortcode).
+* Reveal Iteras' own hidden "User landing page" field (`user_url`) on its settings screen (Settings → ITERAS), via a small CSS override — the field was already fully functional, just never shown.
 
 = 0.7.0 =
 * Add `iteras_get_customer_id()` helper — reads the visitor's Iteras customer ID directly from their signed `iteraspass` cookie (no API call), verifying the HMAC signature and expiry first.

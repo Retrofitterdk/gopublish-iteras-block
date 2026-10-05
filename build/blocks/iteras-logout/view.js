@@ -1,0 +1,1 @@
+document.addEventListener("DOMContentLoaded",function(){document.querySelectorAll(".wp-block-gopublish-iteras-block-iteras-logout").forEach(function(o){o.addEventListener("click",function(){if(void 0!==window.Iteras&&"function"==typeof window.Iteras.logoutFromWall){var t=o.dataset.redirect||window.location.href;window.Iteras.logoutFromWall({redirect:t})}})})});
