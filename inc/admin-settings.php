@@ -118,13 +118,15 @@ if ( ! function_exists( 'gopublish_iteras_cta_sanitize_settings' ) ) {
 					continue;
 				}
 
-				$label      = sanitize_text_field( (string) ( $config['label'] ?? '' ) );
-				$pattern_id = absint( $config['pattern_id'] ?? 0 );
+				$label             = sanitize_text_field( (string) ( $config['label'] ?? '' ) );
+				$pattern_id        = absint( $config['pattern_id'] ?? 0 );
+				$allow_user_level = ! empty( $config['allow_user_level'] );
 
-				if ( $label !== '' || $pattern_id !== 0 ) {
+				if ( $label !== '' || $pattern_id !== 0 || $allow_user_level ) {
 					$output['paywalls'][ $paywall_id ] = [
-						'label'      => $label,
-						'pattern_id' => $pattern_id,
+						'label'             => $label,
+						'pattern_id'        => $pattern_id,
+						'allow_user_level' => $allow_user_level,
 					];
 				}
 			}
@@ -319,6 +321,23 @@ if ( ! function_exists( 'gopublish_iteras_cta_render_page' ) ) {
 										(int) ( $config['pattern_id'] ?? 0 )
 									);
 									?>
+								</td>
+							</tr>
+							<tr>
+								<th scope="row"><?php esc_html_e( 'Registered users', 'gopublish-iteras-block' ); ?></th>
+								<td>
+									<label>
+										<input
+											type="checkbox"
+											name="<?php echo esc_attr( GOPUBLISH_ITERAS_CTA_OPTION ); ?>[paywalls][<?php echo esc_attr( $paywall_id ); ?>][allow_user_level]"
+											value="1"
+											<?php checked( ! empty( $config['allow_user_level'] ) ); ?>
+										>
+										<?php esc_html_e( 'Allow access with a registered-but-not-subscribed ("user" level) Iteras pass, not just a paying subscription', 'gopublish-iteras-block' ); ?>
+									</label>
+									<p class="description">
+										<?php esc_html_e( 'Off by default: content stays restricted to paying subscribers ("sub" level), matching Iteras\' own behaviour. Turn this on only for paywalls meant to grant free registered users access — it also unlocks the full article (bypassing Iteras\' own truncation), since Iteras\' own paywall check never recognises "user" level.', 'gopublish-iteras-block' ); ?>
+									</p>
 								</td>
 							</tr>
 						</table>
