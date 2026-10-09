@@ -107,6 +107,28 @@ if ( ! function_exists( 'iteras_get_post_paywall_ids' ) ) {
 }
 
 /**
+ * Returns true if the given post has any paywall(s) assigned at all — a
+ * plain post-level fact, independent of the current visitor's access and
+ * independent of iteras_user_has_access_for_post(). Use this to mark "this
+ * is premium content" (e.g. a badge shown to every visitor regardless of
+ * their own access); use iteras_user_has_access_for_post() instead to
+ * decide what the *current visitor* is allowed to see.
+ *
+ * Built on iteras_get_post_paywall_ids(), so it shares that function's
+ * null-safety: when Iteras isn't active, this returns false (consistent
+ * with this plugin's fail-open behaviour — nothing is "paywalled" when the
+ * paywall system itself isn't running), same as an empty array of IDs.
+ *
+ * @param int|null $post_id Post ID. Defaults to the current global post.
+ * @return bool
+ */
+if ( ! function_exists( 'iteras_is_post_paywalled' ) ) {
+	function iteras_is_post_paywalled( ?int $post_id = null ): bool {
+		return ! empty( iteras_get_post_paywall_ids( $post_id ) );
+	}
+}
+
+/**
  * Returns Iteras' own "Default paywall access for new posts" setting,
  * normalised to an array — the same shape iteras_get_post_paywall_ids()
  * and iteras_user_has_access() expect.
@@ -271,11 +293,40 @@ if ( ! function_exists( 'iteras_get_default_paywall_cta_label' ) ) {
 }
 
 /**
+ * Returns true if the given paywall ID is configured (via the "Iteras
+ * Paywall CTA" settings screen, see inc/admin-settings.php) to treat a
+ * registered-but-not-subscribed ("user" level) Iteras pass as sufficient
+ * access, not just a paying subscription ("sub" level).
+ *
+ * Off by default — Iteras' own pass_authorized() (and, historically,
+ * _iteras_pass_authorized() below) only ever recognise "sub" level, with no
+ * exposed way to extend that check. This setting is this plugin's own,
+ * additional allowance on top of that, scoped per paywall ID so most
+ * paywalls keep requiring a real subscription.
+ *
+ * @param string $paywall_id
+ * @return bool
+ */
+if ( ! function_exists( 'iteras_paywall_allows_user_level' ) ) {
+	function iteras_paywall_allows_user_level( string $paywall_id ): bool {
+		$paywalls = get_option( 'gopublish_iteras_paywall_cta_settings', [] )['paywalls'] ?? [];
+
+		return ! empty( $paywalls[ $paywall_id ]['allow_user_level'] );
+	}
+}
+
+/**
  * Validates an Iteras pass cookie value against a list of paywall IDs.
  *
  * This replicates Iteras::pass_authorized(), which is a private method and
  * cannot be called from outside the class. Prefixed with an underscore to
  * signal it is an internal helper; use iteras_user_has_access() instead.
+ *
+ * Unlike Iteras' own pass_authorized(), a "user" level pass also counts as
+ * authorized for paywall IDs configured via iteras_paywall_allows_user_level()
+ * — see inc/admin-settings.php. This is this plugin's own, additional
+ * allowance; Iteras' own code and content-truncation logic never grants
+ * this, see inc/content-paywall-override.php.
  *
  * @param string   $pass        Raw value of the iteraspass cookie.
  * @param string[] $restriction List of paywall IDs to check against.
@@ -319,7 +370,13 @@ if ( ! function_exists( '_iteras_pass_authorized' ) ) {
 			$access           = array_combine( $pass_paywall_ids, $access_levels );
 
 			foreach ( $restriction as $r ) {
-				if ( ( $access[ $r ] ?? null ) === 'sub' ) {
+				$level = $access[ $r ] ?? null;
+
+				if ( $level === 'sub' ) {
+					return true;
+				}
+
+				if ( $level === 'user' && iteras_paywall_allows_user_level( $r ) ) {
 					return true;
 				}
 			}
