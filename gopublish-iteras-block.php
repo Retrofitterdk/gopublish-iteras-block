@@ -4,7 +4,7 @@
  * Description:       A block that reveals or hides inner content based on Iteras subscription access.
  * Requires at least: 6.1
  * Requires PHP:      7.4
- * Version:           0.9.0
+ * Version:           0.12.0
  * Author:            Retrofitter
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -22,6 +22,7 @@ require_once plugin_dir_path( __FILE__ ) . 'inc/functions-iteras.php';
 require_once plugin_dir_path( __FILE__ ) . 'inc/post-content-layout-fix.php';
 require_once plugin_dir_path( __FILE__ ) . 'inc/shortcode-paywall-cta.php';
 require_once plugin_dir_path( __FILE__ ) . 'inc/block-bindings.php';
+require_once plugin_dir_path( __FILE__ ) . 'inc/content-paywall-override.php';
 
 if ( is_admin() ) {
 	require_once plugin_dir_path( __FILE__ ) . 'inc/admin-settings.php';
@@ -42,6 +43,7 @@ if ( ! function_exists( 'gopublish_iteras_block_init' ) ) {
 		register_block_type( __DIR__ . '/build/blocks/iteras-paywall' );
 		register_block_type( __DIR__ . '/build/blocks/iteras-logged-in' );
 		register_block_type( __DIR__ . '/build/blocks/iteras-logout' );
+		register_block_type( __DIR__ . '/build/blocks/iteras-paywall-login' );
 
 		wp_set_script_translations(
 			'gopublish-iteras-block-iteras-paywall-editor-script',
@@ -57,6 +59,12 @@ if ( ! function_exists( 'gopublish_iteras_block_init' ) ) {
 
 		wp_set_script_translations(
 			'gopublish-iteras-block-iteras-logout-editor-script',
+			'gopublish-iteras-block',
+			plugin_dir_path( __FILE__ ) . 'languages'
+		);
+
+		wp_set_script_translations(
+			'gopublish-iteras-block-iteras-paywall-login-editor-script',
 			'gopublish-iteras-block',
 			plugin_dir_path( __FILE__ ) . 'languages'
 		);
@@ -111,12 +119,24 @@ if ( ! function_exists( 'gopublish_iteras_block_editor_data' ) ) {
 		if ( class_exists( 'Iteras' ) ) {
 			// Iteras::load_settings() runs on init; by enqueue_block_editor_assets
 			// all init callbacks have completed and settings are fully populated.
-			$paywalls = Iteras::get_instance()->settings['paywalls'] ?? [];
+			$paywalls = array_values( Iteras::get_instance()->settings['paywalls'] ?? [] );
 		}
+
+		// Merge in each paywall's "Registered users" setting (see
+		// inc/admin-settings.php) so the Iteras Paywall Login block's editor
+		// can warn when "Registered users" access is picked for a paywall
+		// that doesn't actually grant it — see iteras_paywall_allows_user_level().
+		foreach ( $paywalls as &$paywall ) {
+			$paywall['allow_user_level'] = function_exists( 'iteras_paywall_allows_user_level' )
+				? iteras_paywall_allows_user_level( $paywall['paywall_id'] ?? '' )
+				: false;
+		}
+		unset( $paywall );
+
 		wp_localize_script(
 			'gopublish-iteras-block-iteras-paywall-editor-script',
 			'gopublishIterasBlockData',
-			[ 'paywalls' => array_values( $paywalls ) ]
+			[ 'paywalls' => $paywalls ]
 		);
 	}
 }
@@ -145,3 +165,39 @@ function post_class_for_paywall_access( $classes, $class, $post_id) {
 	return $classes;
 }
 add_filter( 'post_class', 'post_class_for_paywall_access', 10, 3 );
+
+/**
+ * Moved here from the Olfi theme's inc/custom.php — this is a plain Iteras
+ * fact about the post (is it gated at all), not a theme/presentation
+ * concern, and belongs with iteras_is_post_paywalled() rather than
+ * duplicated per-theme. Distinct from body_class_for_paywall_access()
+ * above: "is-paywalled" is the same for every visitor (a post-level fact,
+ * e.g. for showing a "Premium" badge to everyone), while "has-access" is
+ * per-visitor (can *this* visitor actually read it).
+ *
+ * Skips the front page specifically (not just is_singular(), which a
+ * static front page still satisfies) — the homepage itself was never
+ * meant to be tagged as paywalled/not-paywalled content.
+ */
+function body_class_for_paywalled_content( $classes ) {
+	if ( is_front_page() || ! is_singular() ) {
+		return $classes;
+	}
+
+	$classes[] = iteras_is_post_paywalled( get_the_ID() ) ? 'is-paywalled' : 'is-not-paywalled';
+
+	return $classes;
+}
+add_filter( 'body_class', 'body_class_for_paywalled_content' );
+
+/**
+ * Moved here from the Olfi theme's inc/custom.php — see
+ * body_class_for_paywalled_content() above for why this lives here instead,
+ * and how it differs from post_class_for_paywall_access().
+ */
+function post_class_for_paywalled_content( $classes, $class, $post_id ) {
+	$classes[] = iteras_is_post_paywalled( $post_id ) ? 'is-paywalled' : 'is-not-paywalled';
+
+	return $classes;
+}
+add_filter( 'post_class', 'post_class_for_paywalled_content', 10, 3 );
