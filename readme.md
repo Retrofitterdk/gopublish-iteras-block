@@ -15,11 +15,13 @@ WordPress 6.5 is the minimum because the `Requires Plugins` dependency header �
 
 ## How it works
 
-The plugin ships three real blocks — **Iteras Paywall**, **Iteras Login Status**, and **Iteras Logout Button** — plus three Block Bindings-powered variations, a settings screen, a shortcode, and a Block Bindings source for driving Iteras' own inline paywall (see further down).
+The plugin ships four real blocks — **Iteras Paywall**, **Iteras Login Status**, **Iteras Logout Button**, and **Iteras Paywall Login** — plus three Block Bindings-powered variations, a settings screen, a shortcode, and a Block Bindings source for driving Iteras' own inline paywall (see further down).
 
 The first two are dynamic container blocks that work the same way: editors place any inner blocks (text, images, embeds, etc.) inside them, and on the frontend `render.php` runs an access check on every page load — if it passes, the inner blocks render; if not, the block outputs nothing. They differ in *what* they check: Iteras Paywall gates by a specific paywall (defaulting to the current post's own assigned paywall(s)); Iteras Login Status answers the simpler, unscoped question "does this visitor hold a valid Iteras pass for anything at all". That access check is enforced entirely in PHP using the visitor's `iteraspass` cookie — no JavaScript involved.
 
 Iteras Logout Button is different in kind: logging a visitor out isn't a value to check or render, it's an action that has to run in the browser on click, via Iteras' own client-side `Iteras.logoutFromWall()` JavaScript API. It's the plugin's first use of a block `viewScript` (a frontend-only script, auto-loaded by WordPress only on pages that actually contain the block) — see its own section below.
+
+Iteras Paywall Login is a block equivalent of the `[iteras-paywall-login]` shortcode — it embeds Iteras' own login/subscribe iframe, with which paywalls it applies to and whether a free "registered user" pass is accepted as editor settings, instead of hand-written shortcode attributes (and instead of hand-written inline JavaScript, which has no editor UI at all and is easy to get subtly wrong — see its own section below).
 
 In the block editor, inner content of the two access-gated blocks is always visible. Editors with the `edit_pages` capability are unconditionally granted access, consistent with the `[iteras-if-logged-in]` shortcode's own behaviour.
 
@@ -33,6 +35,7 @@ gopublish-iteras-block/
 │   ├── admin-settings.php            # "Iteras Paywall CTA" settings screen + reveals Iteras' hidden user_url field (admin-only)
 │   ├── shortcode-paywall-cta.php     # [iteras-paywall-cta] shortcode
 │   ├── block-bindings.php            # "paywall-label" + "customer-id" + "login-url" Block Bindings sources
+│   ├── content-paywall-override.php  # Unwalls full articles for "user"-level-allowed paywalls, via Iteras' own override filter
 │   └── post-content-layout-fix.php   # Keeps Iteras' auto paywall wrapper inside block-theme layout bounds
 ├── src/
 │   ├── blocks/
@@ -46,14 +49,21 @@ gopublish-iteras-block/
 │   │   │   └── style.scss            # Frontend styles
 │   │   ├── iteras-logged-in/         # Same file layout as iteras-paywall/ above
 │   │   │   └── ...                   # (block.json, index.js, edit.js, save.js, render.php, editor.scss, style.scss)
-│   │   └── iteras-logout/
-│   │       ├── block.json            # Declares both editorScript and viewScript
+│   │   ├── iteras-logout/
+│   │   │   ├── block.json            # Declares both editorScript and viewScript
+│   │   │   ├── index.js              # Block registration entry point
+│   │   │   ├── edit.js               # Editor component (RichText label + toolbar Link UI)
+│   │   │   ├── save.js               # Save function — fully static output, no render.php needed
+│   │   │   ├── view.js               # Frontend-only script — wires up Iteras.logoutFromWall() on click
+│   │   │   ├── editor.scss           # Editor-only styles
+│   │   │   └── style.scss            # Frontend styles
+│   │   └── iteras-paywall-login/
+│   │       ├── block.json            # No "style" field — output is a <script> tag, no frontend CSS needed
 │   │       ├── index.js              # Block registration entry point
-│   │       ├── edit.js               # Editor component (RichText label + toolbar Link UI)
-│   │       ├── save.js               # Save function — fully static output, no render.php needed
-│   │       ├── view.js               # Frontend-only script — wires up Iteras.logoutFromWall() on click
-│   │       ├── editor.scss           # Editor-only styles
-│   │       └── style.scss            # Frontend styles
+│   │       ├── edit.js               # Editor component (paywall checkboxes + access-level radio + Notice)
+│   │       ├── save.js               # Save function — returns null, render.php builds everything
+│   │       ├── render.php            # Server-side render — builds Iteras.paywalliframe() call directly
+│   │       └── editor.scss           # Editor-only styles
 │   └── block-variations/             # See "Block Variations" below — not a real block
 │       ├── block.json                # Build-tooling marker only, never register_block_type()'d
 │       ├── index.js                  # Shared entry point — imports every variation file below
@@ -73,15 +83,21 @@ gopublish-iteras-block/
 │   │   │   ├── index.asset.php       # Dependency manifest
 │   │   │   └── render.php
 │   │   ├── iteras-logged-in/         # Same file layout as iteras-paywall/ above
-│   │   └── iteras-logout/
+│   │   ├── iteras-logout/
+│   │   │   ├── block.json
+│   │   │   ├── index.js              # Editor bundle
+│   │   │   ├── view.js               # Frontend bundle — separate entry, separate asset.php
+│   │   │   ├── index.asset.php
+│   │   │   ├── view.asset.php
+│   │   │   ├── index.css
+│   │   │   ├── style-index.css
+│   │   │   └── style-index-rtl.css
+│   │   └── iteras-paywall-login/
 │   │       ├── block.json
 │   │       ├── index.js              # Editor bundle
-│   │       ├── view.js               # Frontend bundle — separate entry, separate asset.php
 │   │       ├── index.asset.php
-│   │       ├── view.asset.php
 │   │       ├── index.css
-│   │       ├── style-index.css
-│   │       └── style-index-rtl.css
+│   │       └── render.php
 │   └── block-variations/
 │       ├── block.json                # Copied from src/ as-is, still inert
 │       ├── index.js                  # Compiled bundle of all variation files
@@ -204,6 +220,39 @@ The `typeof window.Iteras === 'undefined'` check is a runtime guard, not a build
 
 No built-in visibility logic, same reasoning as Iteras Customer ID: wrap it in an **Iteras Login Status** block (mode: logged in) if it should only appear for visitors who are actually logged in, rather than duplicating that check into every new block.
 
+## The Iteras Paywall Login block
+
+**Block name:** `gopublish-iteras-block/iteras-paywall-login`
+**Category:** Design
+**Type:** Dynamic (`render.php` — output depends on editor-configured settings, not an access check)
+
+A block equivalent of the `[iteras-paywall-login paywallid="…"]` shortcode — embeds Iteras' own login/subscribe iframe via its client-side `Iteras.paywalliframe()` ([docs](https://app.iteras.dk/api/docs/js/paywall/)), with which paywalls it applies to and the access level it requests as editor settings. Meant for a dedicated login page (e.g. `/log-ind/`), as a safer alternative to hand-writing the same JavaScript inline in an HTML block — fragile (no validation, easy to forget the `document.write(...)` wrapper Iteras' own shortcodes all use, silently renders nothing if missed) and invisible to anyone editing the page later.
+
+### Attributes
+
+| Attribute | Type | Default | Description |
+|---|---|---|---|
+| `paywallIds` | `string[]` | `[]` | Which paywalls this login form applies to. Empty means every configured paywall — matching the `[iteras-paywall-login]` shortcode's own default. |
+| `accessLevel` | `string` | `''` | `''` (subscribers, Iteras' own default) or `'user'` (also accepts a free, non-paying registered-user sign-up). |
+
+### Editor controls
+
+Inspector panel: a checkbox per configured paywall (same `CheckboxControl` list pattern as the Iteras Paywall block, reading the same localized `window.gopublishIterasBlockData.paywalls`), and a `RadioControl` for access level. When "Registered users" is selected, a `Notice` lists any selected paywall that doesn't have "Registered users" enabled on the [Iteras Paywall CTA settings](#iteras-paywall-cta-settings-incadmin-settingsphp) screen — a visitor signing up as a registered user through this form still won't be granted access anywhere until that's turned on for the relevant paywall(s), and this is the most direct way to notice that before publishing rather than after a confused support request.
+
+### Why `render.php` doesn't call `Iteras::paywall_shortcode()` directly
+
+This plugin otherwise prefers calling Iteras' own public shortcode methods directly rather than reimplementing them — see `return_to_page_shortcode()` reuse in [Block Bindings](#block-bindings-incblock-bindingsphp). That wasn't possible here: `paywall_shortcode()` (the method backing `[iteras-paywall-login]`) has a genuine bug —
+
+```php
+if (!empty($attrs) && in_array('paywallid', $attrs)) {
+  $attrs['paywallid'] = $this->parse_paywall_ids($attrs['paywallid']);
+}
+```
+
+`in_array('paywallid', $attrs)` checks whether the *string* `"paywallid"` appears as a *value* in `$attrs` — but a shortcode's `paywallid` attribute is a *key*, never a value (this should be `array_key_exists()`). Confirmed directly (`studio wp eval`): calling `paywall_shortcode(['paywallid' => 'abc123'])` produces the exact same output as calling it with no `paywallid` at all — it always falls through to every configured paywall. The raw `[iteras-paywall-login paywallid="…"]` shortcode has the same bug, for the same reason — its `paywallid` attribute has never actually worked. This is a bug in Iteras' own code, not introduced here, and per this plugin's rule against editing Iteras' files, not something to patch there either.
+
+So `render.php` builds the same `<script>document.write(Iteras.paywalliframe(…))` output Iteras' own shortcode produces, with that one line's logic fixed, reusing `Iteras::combine_attributes()` — a generic, bug-free helper — for everything else.
+
 ## Helper functions (`inc/functions-iteras.php`)
 
 These functions are copied from Go:Publish Essentials so this plugin can operate independently. All three are guarded with `if ( ! function_exists() )`, so they coexist safely if Essentials is also active — whichever plugin loads first wins, and the implementations are identical.
@@ -309,7 +358,13 @@ Validates the raw `iteraspass` cookie value against a list of paywall IDs. Repli
 1. Splits the cookie into a data segment and an HMAC signature (`sha1:…` or `sha256:…`).
 2. Verifies the HMAC against the signing key (skipped when no key is configured).
 3. Checks the pass expiry timestamp.
-4. Confirms at least one paywall ID in `$restriction` has `access_level = "sub"`.
+4. Confirms at least one paywall ID in `$restriction` has `access_level = "sub"` — **or** `access_level = "user"` when that specific paywall ID has its "Registered users" checkbox ticked on the Iteras Paywall CTA settings screen (see `iteras_paywall_allows_user_level()` and [Iteras Paywall CTA settings](#iteras-paywall-cta-settings-incadmin-settingsphp) below). This is an addition on top of what Iteras' own private `pass_authorized()` checks — it never recognises `"user"` level, with no way to extend it directly.
+
+---
+
+### `iteras_paywall_allows_user_level( $paywall_id )`
+
+Returns `true` if the given paywall ID is configured (via its "Registered users" checkbox) to treat a registered-but-not-subscribed (`"user"` level) Iteras pass as sufficient access, not just a paying subscription (`"sub"` level). Reads the same option as `iteras_get_paywall_cta_field_for_post()`. Off by default for every paywall.
 
 ---
 
@@ -331,6 +386,29 @@ if ( function_exists( 'iteras_get_customer_id' ) ) {
     $customer_id = iteras_get_customer_id(); // string or null
 }
 ```
+
+---
+
+### `iteras_is_post_paywalled( $post_id = null )`
+
+Returns `true` if the given post has any paywall(s) assigned at all — a plain post-level fact, independent of the current visitor's access. Built on `iteras_get_post_paywall_ids()` (`! empty( iteras_get_post_paywall_ids( $post_id ) )`), so it shares that function's null-safety: when Iteras isn't active, this returns `false`, consistent with this plugin's fail-open behaviour.
+
+Distinct from `iteras_user_has_access_for_post()`: use this to mark "this is premium content" the same way for every visitor (e.g. a "Premium" badge on an article teaser); use `iteras_user_has_access_for_post()` instead to decide what the *current* visitor is specifically allowed to see. Backs the `is-paywalled` / `is-not-paywalled` body/post classes below.
+
+**Returns** `bool`
+
+## `body_class`/`post_class`: four access-related classes
+
+Two independent class pairs, both added by `gopublish-iteras-block.php` itself (not the theme — moved there from the Olfi theme's `inc/custom.php`, since these are Iteras facts, not theme/presentation concerns):
+
+| Classes | Filter | Based on | Meaning |
+|---|---|---|---|
+| `has-access` / `no-access` | `body_class` (singular only), `post_class` | `iteras_user_has_access_for_post()` | Can *this visitor* read this specific post right now? |
+| `is-paywalled` / `is-not-paywalled` | `body_class` (singular, not the front page), `post_class` | `iteras_is_post_paywalled()` | Does this post have *any* paywall assigned at all — the same for every visitor? |
+
+These answer different questions and can disagree on the same post: a post can be `is-paywalled` and `has-access` at once (a subscriber reading gated content), or `is-paywalled` and `no-access` (an anonymous visitor hitting the same gate). Use `is-paywalled`/`is-not-paywalled` for a universal "this is premium content" marker (e.g. a lock badge shown to everyone); use `has-access`/`no-access` for anything that should differ per visitor.
+
+`body_class_for_paywalled_content()` specifically excludes the front page (`is_front_page()`, not just `is_singular()` — a static front page still satisfies `is_singular()`) since the homepage itself was never meant to be tagged this way; `body_class_for_paywall_access()` has no such exclusion (a pre-existing difference between the two, kept as-is when the paywalled-content pair moved here from the theme, rather than silently unifying behaviour nobody asked to change).
 
 ## Plugin dependency
 
@@ -355,9 +433,10 @@ The Iteras Paywall block above only gates blocks placed *outside* `the_content`.
 
 **Layout:** a single form, tabbed client-side (no page reloads — all tabs' fields exist in the DOM at once, toggled by a small inline script, so switching tabs never risks losing another tab's unsaved input). One tab per paywall from `Iteras::get_instance()->settings['paywalls']`, plus a "Default" tab first.
 
-**Per tab:**
+**Per tab (except Default):**
 - **Label** — plain text, feeds `iteras_get_paywall_label_for_post()` / the block bindings source below.
 - **Pattern** — a `<select>` of synced patterns (`wp_block` posts), filtered to the **"Paywall"** pattern category (auto-registered in the `wp_pattern_category` taxonomy on `init`) once at least one pattern is tagged with it; falls back to listing every published pattern until then, so the picker is never empty.
+- **Registered users** — a checkbox, off by default. When checked, a visitor holding a registered-but-not-subscribed (`"user"` level) Iteras pass for *this* paywall is treated as having access, both by this plugin's own checks (`iteras_user_has_access()` and anything built on it) and, via the content-paywall override below, by Iteras' own article truncation. Every paywall otherwise keeps requiring a paying (`"sub"` level) subscription, matching Iteras' own built-in behaviour exactly.
 
 **Storage:** a single option, `gopublish_iteras_paywall_cta_settings`:
 
@@ -365,14 +444,22 @@ The Iteras Paywall block above only gates blocks placed *outside* `the_content`.
 [
     'default'  => [ 'pattern_id' => 31736, 'label' => '' ],
     'paywalls' => [
-        'jb4e3e8v9ajr' => [ 'label' => 'Privat', 'pattern_id' => 123 ],
+        'jb4e3e8v9ajr' => [ 'label' => 'Privat', 'pattern_id' => 123, 'allow_user_level' => false ],
         // one entry per paywall someone has actually configured
     ],
 ]
 ```
-Sanitized via `gopublish_iteras_cta_sanitize_settings()` (`absint()` on pattern IDs, `sanitize_text_field()` on labels and paywall-ID keys).
+Sanitized via `gopublish_iteras_cta_sanitize_settings()` (`absint()` on pattern IDs, `sanitize_text_field()` on labels and paywall-ID keys, cast to `bool` for `allow_user_level`).
 
 **Migration:** a one-time `admin_init` check (`gopublish_iteras_cta_maybe_migrate()`) seeds `default.pattern_id` from whatever synced-pattern ID the *previous* "Iteras Ordering" screen's free-text fallback CTA already referenced (parsed out of `[synced_pattern id="…"]`), so upgrading doesn't blank out an existing fallback. It's a no-op once the new option exists. The old option (`gopublish_iteras_ordering_settings`) is left in place, untouched and unused.
+
+## Content paywall override (`inc/content-paywall-override.php`)
+
+Checking the "Registered users" box above only extends *this plugin's own* access checks (`iteras_user_has_access()`). It does nothing on its own about the actual article content — Iteras' own truncation (`Iteras::resolve_paywall_state()` / `potentially_paywall_content()` in `iteras-public.php`) is driven by its *private* `pass_authorized()` method, which only ever recognises `"sub"` level, with no hook to change how that specific check evaluates.
+
+The only exposed extension point is Iteras' own `iteras_override_content_paywall` filter — `apply_filters( 'iteras_override_content_paywall', $paywall_ids, $post, $user_authorized, $settings )` — which can force `post_is_paywalled` to `false` outright (or swap which paywall IDs apply), but can't make Iteras' check itself accept `"user"` level. So instead of trying to fix that check, `gopublish_iteras_user_level_override_paywall()` unwalls the post entirely for the current visitor once `iteras_user_has_access( $paywall_ids )` (now itself "user"-level aware per paywall, see above) says they qualify — same OR-across-paywall-IDs semantics as everywhere else in this plugin, so a post with several paywall IDs only needs *one* of them to match.
+
+**Caution if adding another filter on the same hook:** this filter chains — each callback receives the *previous* callback's return value as its first argument, not the original. A callback that ignores that argument and returns a hardcoded value (as `disable_paywall()` in the theme's `inc/custom.php` used to, before being fixed alongside this feature) silently discards every other plugin's override.
 
 ## `[iteras-paywall-cta]` shortcode (`inc/shortcode-paywall-cta.php`)
 

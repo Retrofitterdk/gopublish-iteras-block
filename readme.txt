@@ -3,7 +3,7 @@ Contributors:      retrofitter
 Tags:              iteras, paywall, subscription, access control, block
 Requires at least: 6.5
 Tested up to:      7.0
-Stable tag:        0.9.0
+Stable tag:        0.12.0
 Requires PHP:      7.4
 Requires Plugins:  iteras
 License:           GPL-2.0-or-later
@@ -43,6 +43,7 @@ The screen has one tab per synced Iteras paywall, plus a "Default" tab. Each tab
 
 * **Label** — the text used for the eyebrow label ("ABONNEMENT" etc.) shown above paywalled posts, if the active theme wires it up (see "Block Bindings" below).
 * **Pattern** — a dropdown of synced patterns (reusable blocks) whose content should replace the default call-to-action box for posts walled by that paywall. Build the pattern visually in the block editor — pricing tables, an `[iteras-ordering]` shortcode, anything — no raw ordering IDs or shortcode syntax required.
+* **Registered users** — a checkbox, off by default. When checked, a visitor holding a registered-but-not-subscribed ("user" level) Iteras pass for that paywall is treated as having access — to the full article (bypassing Iteras' own truncation) and to this plugin's own blocks (Iteras Login Status, Iteras Paywall). Every paywall otherwise keeps requiring a paying ("sub" level) subscription, matching Iteras' own behaviour.
 
 If a post's assigned paywall IDs don't resolve to exactly one specific pattern or label (none configured, or several that disagree), the Default tab's pattern and label are used instead.
 
@@ -79,6 +80,14 @@ It deliberately links to Iteras' **"User landing page"** setting, not **"Subscri
 Add the **Iteras Logout Button** block anywhere to let a subscriber log out, via Iteras' own client-side `Iteras.logoutFromWall()` JavaScript function. It's a real button: click the link icon in its toolbar — same as any other button — to set where it should redirect afterwards, or leave it blank and it reloads the current page. No API call is involved; this runs entirely in the visitor's browser.
 
 This block deliberately always tells Iteras exactly where to redirect, rather than relying on Iteras' own documented "reload the page by default" behaviour — testing showed that default doesn't reliably fire on a page with no active paywall script running (e.g. a plain login page): the visitor's pass cleared correctly, but nothing visibly happened afterwards. Always specifying a destination (the one set via the toolbar, or the current page's own address) avoids that silent dead end.
+
+**A login/subscribe form, without hand-written JavaScript**
+
+Add the **Iteras Paywall Login** block to embed Iteras' own login/subscribe iframe — a block equivalent of the `[iteras-paywall-login]` shortcode, meant for a dedicated login page. Its sidebar panel lets you tick which paywalls it applies to (leave all unticked to apply to every configured paywall) and choose an access level: **Subscribers** (Iteras' own default) or **Registered users**, which also accepts a free, non-paying sign-up.
+
+Choosing "Registered users" only matters for a paywall that has its own **"Registered users"** checkbox enabled on the **Settings → Iteras Paywall CTA** screen (see below) — the block warns in its sidebar if that's not yet the case for whichever paywalls are selected, since otherwise a visitor who signs up this way still won't be granted access anywhere.
+
+This exists as a safer alternative to pasting `Iteras.paywalliframe({...})` directly into an HTML block: easy to get subtly wrong (forgetting the `document.write(...)` wrapper Iteras' own shortcodes all use silently renders nothing), with no editor-visible indication of what it does or what it's configured to require.
 
 == Installation ==
 
@@ -153,7 +162,27 @@ No, deliberately not — it just renders with no link at all. A fallback would q
 
 Probably not — check whether the visitor's `iteraspass` cookie actually cleared (DevTools → Application → Cookies) before assuming it's broken. In testing, the button reliably logs the visitor out even when nothing visibly changes on screen, because Iteras' own "reload the page by default" behaviour doesn't always fire. As of the current version this block always sets an explicit redirect itself (the link you set via its toolbar, or the current page as a fallback) specifically to avoid that silent case — if you're still seeing no visible change, check that you're on an up-to-date version of this plugin.
 
+= I set `paywallid` on the raw `[iteras-paywall-login]` shortcode and it still shows every paywall — is that a bug? =
+
+Yes, but in Iteras itself, not in this plugin. Iteras' `paywall_shortcode()` checks `in_array('paywallid', $attrs)` to decide whether a `paywallid` attribute was passed — but `paywallid` is a *key* in that array, never a value, so the check is always false and the shortcode always falls back to every configured paywall, regardless of what you set. The **Iteras Paywall Login** block doesn't have this problem: its `render.php` builds the same iframe call directly, with that check fixed on this plugin's side.
+
+= I turned on "Registered users" for a paywall, but a registered (non-subscribing) visitor still can't see the article — why? =
+
+Check that the paywall ID you logged in against is the same one that's actually assigned to that article, and that "Registered users" is enabled for *that* paywall specifically — it's per-paywall, not site-wide. Also check whether any other plugin or theme code has its own callback on Iteras' `iteras_override_content_paywall` filter: that filter chains (each callback receives the previous one's return value), so a callback that ignores its argument and returns a hardcoded value can silently discard this plugin's override, and any other plugin's, for every post. This happened on this site once already — see the 0.10.0 changelog entry below.
+
 == Changelog ==
+
+= 0.12.0 =
+* Add `iteras_is_post_paywalled()` helper — a plain post-level fact ("does this post have any paywall assigned at all"), independent of the current visitor's access, built on the existing `iteras_get_post_paywall_ids()`.
+* Move the `is-paywalled` / `is-not-paywalled` `body_class`/`post_class` additions here from the Olfi theme's `inc/custom.php` (now using the new helper instead of a hardcoded `get_post_meta()` call) — Iteras-specific logic, not a theme concern, and a natural pair alongside this plugin's existing `has-access`/`no-access` classes.
+
+= 0.11.0 =
+* Add the "Iteras Paywall Login" block — a block equivalent of the `[iteras-paywall-login]` shortcode, embedding Iteras' own login/subscribe iframe with a per-paywall checkbox list and an access-level (subscribers / registered users) choice in the editor, as a safer alternative to hand-written inline JavaScript on a login page.
+* Discovered and worked around a bug in Iteras' own `paywall_shortcode()`: its `paywallid` attribute check (`in_array('paywallid', $attrs)`) tests for the string as a value rather than a key, so it's always false and the shortcode's `paywallid` attribute has never actually restricted anything. The new block builds its own iframe call with that logic fixed, rather than delegating to the buggy method.
+
+= 0.10.0 =
+* Add a "Registered users" checkbox per paywall on the Iteras Paywall CTA settings screen (Settings → Iteras Paywall CTA). When checked, visitors with a registered-but-not-subscribed ("user" level) Iteras pass for that paywall are treated as having access — by this plugin's own blocks (Iteras Login Status, Iteras Paywall) and, via a new `iteras_override_content_paywall` filter callback, by Iteras' own article content truncation too. Off by default — every paywall keeps requiring a paying ("sub" level) subscription unless explicitly opted in, matching Iteras' own built-in behaviour.
+* Fix: the theme's `disable_paywall()` filter (`inc/custom.php`) declared no parameters and unconditionally returned `true` for any page other than the front/home/archive/search, silently discarding whatever any other plugin's `iteras_override_content_paywall` filter had already decided — including this plugin's new "Registered users" override, and (pre-existing, unrelated to this release) Go:Publish Essentials' Talker TTS paywall bypass. Both now work correctly on single posts.
 
 = 0.9.0 =
 * Add the "Iteras Logout Button" block — a real button (click its toolbar link icon to set where it redirects to, same as any other button) that logs a subscriber out via Iteras' own client-side `Iteras.logoutFromWall()`. The plugin's first use of a block `viewScript` (a frontend-only script, auto-loaded only on pages containing the block).
