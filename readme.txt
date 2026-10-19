@@ -3,7 +3,7 @@ Contributors:      retrofitter
 Tags:              iteras, paywall, subscription, access control, block
 Requires at least: 6.5
 Tested up to:      7.0
-Stable tag:        0.12.0
+Stable tag:        1.0.0
 Requires PHP:      7.4
 Requires Plugins:  iteras
 License:           GPL-2.0-or-later
@@ -171,6 +171,9 @@ Yes, but in Iteras itself, not in this plugin. Iteras' `paywall_shortcode()` che
 Check that the paywall ID you logged in against is the same one that's actually assigned to that article, and that "Registered users" is enabled for *that* paywall specifically — it's per-paywall, not site-wide. Also check whether any other plugin or theme code has its own callback on Iteras' `iteras_override_content_paywall` filter: that filter chains (each callback receives the previous one's return value), so a callback that ignores its argument and returns a hardcoded value can silently discard this plugin's override, and any other plugin's, for every post. This happened on this site once already — see the 0.10.0 changelog entry below.
 
 == Changelog ==
+
+= 1.0.0 =
+* Add a third, independent `body_class`: `iteras-logged-in` / `iteras-not-logged-in` — whether the current visitor holds a valid Iteras pass for *anything at all* (same question the Iteras Login Status block answers), regardless of whether they have access to any specific post. Fires on every page (not just singular posts) since it's a fact about the visitor, not about a post — unlike the existing `has-access`/`no-access` and `is-paywalled`/`is-not-paywalled` pairs. Prefixed with `iteras-` specifically to avoid any ambiguity with a WordPress account login, which this has nothing to do with.
 
 = 0.12.0 =
 * Add `iteras_is_post_paywalled()` helper — a plain post-level fact ("does this post have any paywall assigned at all"), independent of the current visitor's access, built on the existing `iteras_get_post_paywall_ids()`.

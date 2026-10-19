@@ -397,16 +397,19 @@ Distinct from `iteras_user_has_access_for_post()`: use this to mark "this is pre
 
 **Returns** `bool`
 
-## `body_class`/`post_class`: four access-related classes
+## `body_class`/`post_class`: access-related classes
 
-Two independent class pairs, both added by `gopublish-iteras-block.php` itself (not the theme — moved there from the Olfi theme's `inc/custom.php`, since these are Iteras facts, not theme/presentation concerns):
+Three independent class pairs, all added by `gopublish-iteras-block.php` itself (the first two moved there from the Olfi theme's `inc/custom.php` — these are Iteras facts, not theme/presentation concerns):
 
 | Classes | Filter | Based on | Meaning |
 |---|---|---|---|
 | `has-access` / `no-access` | `body_class` (singular only), `post_class` | `iteras_user_has_access_for_post()` | Can *this visitor* read this specific post right now? |
 | `is-paywalled` / `is-not-paywalled` | `body_class` (singular, not the front page), `post_class` | `iteras_is_post_paywalled()` | Does this post have *any* paywall assigned at all — the same for every visitor? |
+| `iteras-logged-in` / `iteras-not-logged-in` | `body_class` (every page) | `iteras_user_has_access()` (no paywall restriction) | Does this visitor hold a valid Iteras pass for *anything at all* — the same question the Iteras Login Status block answers? |
 
-These answer different questions and can disagree on the same post: a post can be `is-paywalled` and `has-access` at once (a subscriber reading gated content), or `is-paywalled` and `no-access` (an anonymous visitor hitting the same gate). Use `is-paywalled`/`is-not-paywalled` for a universal "this is premium content" marker (e.g. a lock badge shown to everyone); use `has-access`/`no-access` for anything that should differ per visitor.
+The first two are about a specific *post*; the third is purely about the *visitor*, which is why it has no `post_class` sibling (it wouldn't vary per post in a query loop) and no `is_singular()` guard (it fires on every page — archives, the front page, anywhere a header login link might need it). It's deliberately prefixed `iteras-` (unlike the other two pairs) because "logged in" alone would be ambiguous with a WordPress account login, which this has nothing to do with.
+
+These can all disagree on the same request: a post can be `is-paywalled` and `has-access` at once (a subscriber reading gated content), or `is-paywalled` and `no-access` (an anonymous visitor hitting the same gate), independently of whatever `iteras-logged-in`/`iteras-not-logged-in` says about the visitor generally. Use `is-paywalled`/`is-not-paywalled` for a universal "this is premium content" marker (e.g. a lock badge shown to everyone); use `has-access`/`no-access` for anything that should differ per visitor on that specific post; use `iteras-logged-in`/`iteras-not-logged-in` for anything that only cares whether the visitor is logged in at all (e.g. showing a login link vs. an account link in the header).
 
 `body_class_for_paywalled_content()` specifically excludes the front page (`is_front_page()`, not just `is_singular()` — a static front page still satisfies `is_singular()`) since the homepage itself was never meant to be tagged this way; `body_class_for_paywall_access()` has no such exclusion (a pre-existing difference between the two, kept as-is when the paywalled-content pair moved here from the theme, rather than silently unifying behaviour nobody asked to change).
 
