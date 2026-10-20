@@ -3,7 +3,7 @@ Contributors:      retrofitter
 Tags:              iteras, paywall, subscription, access control, block
 Requires at least: 6.5
 Tested up to:      7.0
-Stable tag:        1.2.2
+Stable tag:        1.3.0
 Requires PHP:      7.4
 Requires Plugins:  iteras
 License:           GPL-2.0-or-later
@@ -171,6 +171,10 @@ Yes, but in Iteras itself, not in this plugin. Iteras' `paywall_shortcode()` che
 Check that the paywall ID you logged in against is the same one that's actually assigned to that article, and that "Registered users" is enabled for *that* paywall specifically — it's per-paywall, not site-wide. Also check whether any other plugin or theme code has its own callback on Iteras' `iteras_override_content_paywall` filter: that filter chains (each callback receives the previous one's return value), so a callback that ignores its argument and returns a hardcoded value can silently discard this plugin's override, and any other plugin's, for every post. This happened on this site once already — see the 0.10.0 changelog entry below.
 
 == Changelog ==
+
+= 1.3.0 =
+* **Security fix**: a post configured to allow "Registered users" (the "allow_user_level" checkbox on the Iteras Paywall CTA settings screen) was unknowingly exposed to full public access via any caching layer. Iteras' own cache-prevention headers are only sent when it believes a post is still paywalled — but unwalling a post for a "user"-level visitor via `iteras_override_content_paywall` (added in 0.10.0) makes Iteras see "not paywalled" too, and it has no way to know a specific visitor's own pass is the only reason. Confirmed directly: the full, untruncated response for a "user"-level-authorized visitor carried zero `Cache-Control`/no-cache headers at all — meaning any caching layer in front (a CDN, a reverse proxy, a host's page cache) would store that fully-open response and serve it to every subsequent visitor, including ones with no pass whatsoever, completely defeating that paywall. `gopublish_iteras_user_level_override_paywall()` now independently sends the same no-cache signals Iteras' own (private, uncallable) `emit_no_cache_signals()` does, whenever it's the reason a post opened up — regardless of what Iteras' own logic separately concludes.
+* If you have any paywalls configured with "Registered users" enabled, treat any existing cache of pages containing those posts as compromised and purge it after updating.
 
 = 1.2.2 =
 * Fix: the Iteras Login Status block's `render.php` no longer wraps its content in a new outer div to carry the hidden-by-default state — that broke the block's "constrained" layout support (alignwide/alignfull content inside it fell back to the default constrained width, since WordPress's layout CSS targets direct children of the block's own wrapper). The attribute and hidden style are now set directly on the block's existing wrapper via `WP_HTML_Tag_Processor`, preserving any existing inline style (e.g. an editor-configured background color) instead of overwriting it.

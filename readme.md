@@ -525,6 +525,16 @@ The only exposed extension point is Iteras' own `iteras_override_content_paywall
 
 **Caution if adding another filter on the same hook:** this filter chains — each callback receives the *previous* callback's return value as its first argument, not the original. A callback that ignores that argument and returns a hardcoded value (as `disable_paywall()` in the theme's `inc/custom.php` used to, before being fixed alongside this feature) silently discards every other plugin's override.
 
+### The caching gap this filter opened, and how it's closed
+
+Found in 1.3.0: Iteras' own cache-prevention (`potentially_prevent_caching()`, hooked `template_redirect` priority 1) decides whether to send no-cache headers by reading `post_is_paywalled` — the exact same value this override just forced to `false`. Since Iteras' logic has no way to know *why* a post is suddenly "not paywalled" — whether nothing was ever gated, or this one specific visitor's own pass just unlocked it — it sends nothing at all in the second case.
+
+Confirmed directly against a post configured to allow "Registered users": an anonymous request got Iteras' full `Cache-Control: no-cache` header set and truncated content, exactly as expected; the identical post requested with a valid `"user"`-level pass got the full, untruncated article — and *zero* cache-control headers of any kind. Any caching layer sitting in front of WordPress (a CDN, a reverse proxy, a host's own page cache) would store that fully-unlocked response and serve it to every subsequent visitor, including ones holding no pass at all — completely defeating that paywall, for every visitor, until the cache entry happened to expire.
+
+`gopublish_iteras_user_level_override_paywall()` now calls `gopublish_iteras_emit_no_cache_signals()` immediately before returning `false` — a direct replication of Iteras' own private `emit_no_cache_signals()` (same `DONOTCACHEPAGE`/`DONOTCACHEOBJECT`/`DONOTCACHEDB` constants, same LiteSpeed/WP Rocket signals, same `Cache-Control`/`Vary: Cookie` header set), called independently of whatever Iteras' own logic separately concludes. Gated on `paywall_server_side_validation` being enabled (the same condition Iteras' own mechanism checks) — if that's off, Iteras' entire paywall is already advisory-only by its own design, so there's nothing additional for this to protect.
+
+**If you have any paywalls configured with "Registered users" enabled, treat any existing cache as compromised and purge it after updating** — a stale cached copy from before this fix could already be serving full content to every visitor.
+
 ## `[iteras-paywall-cta]` shortcode (`inc/shortcode-paywall-cta.php`)
 
 Registered on `init`. Meant to be dropped **once** into Iteras' own "Call-to-action content" field (see above) in place of any static text — it resolves per-post at render time:
