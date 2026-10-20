@@ -188,15 +188,25 @@ A single **RadioControl** in the sidebar: "Show content to" → *visitors who ar
 
 Both of those branches are resolved **server-side**, unconditionally — they're the same for every visitor (or never actually reach a cached page in practice, since a logged-in WordPress session already forces a cache bypass at the hosting layer on its own), so baking them into a cached response is safe.
 
-Once both are ruled out, the real per-visitor case is handled completely differently — not by computing `iteras_user_has_access()` and conditionally echoing. Doing that would mean a page using this block could never be served from a full-page cache without risking stale, wrong content for other visitors (confirmed in production: a page cached while actually logged in was later served, unchanged, to logged-out visitors, showing them as logged in). Instead `render.php` always outputs the content, wrapped and hidden by default:
+Once both are ruled out, the real per-visitor case is handled completely differently — not by computing `iteras_user_has_access()` and conditionally echoing. Doing that would mean a page using this block could never be served from a full-page cache without risking stale, wrong content for other visitors (confirmed in production: a page cached while actually logged in was later served, unchanged, to logged-out visitors, showing them as logged in). Instead `render.php` always outputs the content, hidden by default, tagged with `data-iteras-show-when` — set directly on the block's *own* wrapper via `WP_HTML_Tag_Processor`, not a new div wrapped around it:
 
 ```php
-printf(
-    '<div data-iteras-show-when="%s" style="display:none">%s</div>',
-    esc_attr( $show_when ),
-    $content
-);
+$processor = new WP_HTML_Tag_Processor( $content );
+
+if ( $processor->next_tag() ) {
+    $processor->set_attribute( 'data-iteras-show-when', $show_when );
+
+    $existing_style = $processor->get_attribute( 'style' );
+    $processor->set_attribute(
+        'style',
+        ( $existing_style ? rtrim( (string) $existing_style, ';' ) . ';' : '' ) . 'display:none'
+    );
+}
+
+echo $processor->get_updated_html();
 ```
+
+An earlier version wrapped `$content` in a new outer div instead, which broke this block's "constrained" layout support: that layout type's CSS applies `max-width`/`alignwide`/`alignfull` rules to *direct children* of the block's own wrapper, so the extra DOM level meant the actual inner blocks were no longer direct children of it, and all fell back to the default constrained width regardless of their own alignment — confirmed in production as a real, visible layout regression. Reading any existing `style` attribute first (rather than overwriting it outright) also matters: this block supports color/spacing, so an editor-configured background color or padding would otherwise be silently discarded.
 
 `view.js` (a frontend-only `viewScript`, loaded only on pages containing this block) is what actually decides, client-side, reading the visitor's own `iteraspass` cookie via Iteras' `Iteras.paywallPass()`:
 

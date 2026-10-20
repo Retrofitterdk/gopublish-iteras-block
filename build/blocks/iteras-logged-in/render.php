@@ -50,6 +50,16 @@
  * paywalled content access, which stays fully server-side enforced
  * regardless of what this block shows.
  *
+ * The hidden-by-default attribute/style are set on the block's *own*
+ * wrapper (save.js's useBlockProps.save() div, already part of $content),
+ * via WP_HTML_Tag_Processor — not a new div wrapped around it. An earlier
+ * version did wrap $content in a new outer div, which broke this block's
+ * "constrained" layout support: that layout type's CSS targets *direct
+ * children* of the block's own wrapper to apply max-width/alignwide/
+ * alignfull rules, so inserting an extra DOM level meant the actual inner
+ * blocks were no longer direct children of it, and all fell back to the
+ * default constrained width regardless of their own alignment.
+ *
  * Variables available:
  *   $attributes (array)    Block attributes: 'showWhen'.
  *   $content    (string)   Rendered inner-blocks HTML (from save()).
@@ -88,9 +98,17 @@ if ( current_user_can( 'edit_pages' ) ) {
 
 $show_when = $attributes['showWhen'] ?? 'logged-in';
 
-printf(
-	'<div data-iteras-show-when="%s" style="display:none">%s</div>',
-	esc_attr( $show_when ),
-	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-	$content
-);
+$processor = new WP_HTML_Tag_Processor( $content );
+
+if ( $processor->next_tag() ) {
+	$processor->set_attribute( 'data-iteras-show-when', $show_when );
+
+	$existing_style = $processor->get_attribute( 'style' );
+	$processor->set_attribute(
+		'style',
+		( $existing_style ? rtrim( (string) $existing_style, ';' ) . ';' : '' ) . 'display:none'
+	);
+}
+
+// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+echo $processor->get_updated_html();

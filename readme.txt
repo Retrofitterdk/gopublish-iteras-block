@@ -3,7 +3,7 @@ Contributors:      retrofitter
 Tags:              iteras, paywall, subscription, access control, block
 Requires at least: 6.5
 Tested up to:      7.0
-Stable tag:        1.2.1
+Stable tag:        1.2.2
 Requires PHP:      7.4
 Requires Plugins:  iteras
 License:           GPL-2.0-or-later
@@ -171,6 +171,9 @@ Yes, but in Iteras itself, not in this plugin. Iteras' `paywall_shortcode()` che
 Check that the paywall ID you logged in against is the same one that's actually assigned to that article, and that "Registered users" is enabled for *that* paywall specifically — it's per-paywall, not site-wide. Also check whether any other plugin or theme code has its own callback on Iteras' `iteras_override_content_paywall` filter: that filter chains (each callback receives the previous one's return value), so a callback that ignores its argument and returns a hardcoded value can silently discard this plugin's override, and any other plugin's, for every post. This happened on this site once already — see the 0.10.0 changelog entry below.
 
 == Changelog ==
+
+= 1.2.2 =
+* Fix: the Iteras Login Status block's `render.php` no longer wraps its content in a new outer div to carry the hidden-by-default state — that broke the block's "constrained" layout support (alignwide/alignfull content inside it fell back to the default constrained width, since WordPress's layout CSS targets direct children of the block's own wrapper). The attribute and hidden style are now set directly on the block's existing wrapper via `WP_HTML_Tag_Processor`, preserving any existing inline style (e.g. an editor-configured background color) instead of overwriting it.
 
 = 1.2.1 =
 * Rework the 1.2.0 has-access/no-access correction to use a real, properly enqueued script (`wp_enqueue_script()` + `wp_add_inline_script()` for the late-known data) instead of echoing a `<script>` tag with embedded logic directly from PHP. The comparison logic now lives in `src/post-access-correction/view.js`, a browser-cacheable asset identical on every page, following the same independent-loading pattern already used for Block Variations.
