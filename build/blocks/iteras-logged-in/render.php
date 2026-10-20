@@ -27,6 +27,29 @@
  * paywall-specific gating; this block only answers "is this visitor a
  * subscriber of any kind, yes or no."
  *
+ * Caching note: the three branches above (Iteras inactive, server-side
+ * validation off, current user is a WordPress editor) are all safe to
+ * bake into a cached page as-is — the first two are the same for every
+ * visitor regardless of their Iteras pass, and the third never actually
+ * reaches a cached response in practice, since a logged-in WordPress
+ * session already forces a cache bypass at the hosting layer independent
+ * of anything Iteras-specific (SiteGround's Dynamic Cache excludes
+ * wordpress_logged_in_* by default, for example).
+ *
+ * The real per-visitor case below does NOT decide server-side whether to
+ * show the content — it always renders it, hidden by default, tagged with
+ * data-iteras-show-when, and leaves the actual show/hide decision to
+ * view.js reading the visitor's own iteraspass cookie client-side via
+ * Iteras.paywallPass(). This is what lets a page using this block stay
+ * fully cacheable: the HTML is identical for every visitor, and only a
+ * small client-side step personalizes it afterwards. See view.js for why
+ * that's an intentionally weaker check than this file's own
+ * iteras_user_has_access() (no HMAC verification is possible client-side,
+ * since the signing key is a server-only secret) — acceptable here since
+ * this block only ever controls a status *display*, never actual
+ * paywalled content access, which stays fully server-side enforced
+ * regardless of what this block shows.
+ *
  * Variables available:
  *   $attributes (array)    Block attributes: 'showWhen'.
  *   $content    (string)   Rendered inner-blocks HTML (from save()).
@@ -65,16 +88,9 @@ if ( current_user_can( 'edit_pages' ) ) {
 
 $show_when = $attributes['showWhen'] ?? 'logged-in';
 
-// No paywall ID given falls back to *all* paywalls configured in Iteras
-// (iteras_user_has_access()'s own default) — "does this visitor hold a
-// valid pass for anything", matching the shortcodes' own default when no
-// paywallid attribute is given.
-$is_logged_in = iteras_user_has_access();
-$show         = ( 'not-logged-in' === $show_when ) ? ! $is_logged_in : $is_logged_in;
-
-if ( ! $show ) {
-	return;
-}
-
-// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-echo $content;
+printf(
+	'<div data-iteras-show-when="%s" style="display:none">%s</div>',
+	esc_attr( $show_when ),
+	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	$content
+);

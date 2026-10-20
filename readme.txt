@@ -3,7 +3,7 @@ Contributors:      retrofitter
 Tags:              iteras, paywall, subscription, access control, block
 Requires at least: 6.5
 Tested up to:      7.0
-Stable tag:        1.0.0
+Stable tag:        1.2.1
 Requires PHP:      7.4
 Requires Plugins:  iteras
 License:           GPL-2.0-or-later
@@ -171,6 +171,17 @@ Yes, but in Iteras itself, not in this plugin. Iteras' `paywall_shortcode()` che
 Check that the paywall ID you logged in against is the same one that's actually assigned to that article, and that "Registered users" is enabled for *that* paywall specifically — it's per-paywall, not site-wide. Also check whether any other plugin or theme code has its own callback on Iteras' `iteras_override_content_paywall` filter: that filter chains (each callback receives the previous one's return value), so a callback that ignores its argument and returns a hardcoded value can silently discard this plugin's override, and any other plugin's, for every post. This happened on this site once already — see the 0.10.0 changelog entry below.
 
 == Changelog ==
+
+= 1.2.1 =
+* Rework the 1.2.0 has-access/no-access correction to use a real, properly enqueued script (`wp_enqueue_script()` + `wp_add_inline_script()` for the late-known data) instead of echoing a `<script>` tag with embedded logic directly from PHP. The comparison logic now lives in `src/post-access-correction/view.js`, a browser-cacheable asset identical on every page, following the same independent-loading pattern already used for Block Variations.
+
+= 1.2.0 =
+* Correct `has-access`/`no-access` client-side for posts rendered as teasers inside a query loop (homepage, archives) — the one remaining gap after the Login Status rework, confirmed in production to actually matter since these classes drive real CSS (hiding the paywall label / featured-category label on article teasers). A new `wp_footer` script compares each recorded post's paywall ID(s) against the visitor's own `iteraspass` cookie client-side, replicating the same "sub, or user when that paywall allows it" check `iteras_user_has_access()` does server-side. Only emitted when at least one such post was actually rendered, and skipped entirely for WordPress editors (whose `has-access` is already unconditionally correct server-side, and who a client-side check has no way to recognize as such).
+* `is-paywalled`/`is-not-paywalled` and `has-access`/`no-access` on a singular page needed no equivalent fix — both are either visitor-independent or already protected from caching by Iteras' own `DONOTCACHEPAGE`, see `inc/functions-iteras.php` and `potentially_prevent_caching()` in `iteras-public.php`.
+
+= 1.1.0 =
+* Rework the Iteras Login Status block to be cache-friendly: it now always renders its content (hidden by default, tagged `data-iteras-show-when`), and a new frontend `view.js` reveals the correct state client-side via Iteras' own `Iteras.paywallPass()` — instead of deciding server-side, which previously meant a page using this block could never be served from a full-page cache without risking stale, wrong content for other visitors. Also corrects the "Iteras Customer ID" paragraph's text client-side for the same reason, piggybacking on this block's script since block variations can't have their own.
+* This is a deliberate, narrower alternative to bypassing full-page caching entirely for every logged-in visitor on every page — see `inc/custom.php`'s `bypass_dynamic_cache_for_iteras_login()` in the Olfi theme, which this is meant to make unnecessary once deployed and confirmed.
 
 = 1.0.0 =
 * Add a third, independent `body_class`: `iteras-logged-in` / `iteras-not-logged-in` — whether the current visitor holds a valid Iteras pass for *anything at all* (same question the Iteras Login Status block answers), regardless of whether they have access to any specific post. Fires on every page (not just singular posts) since it's a fact about the visitor, not about a post — unlike the existing `has-access`/`no-access` and `is-paywalled`/`is-not-paywalled` pairs. Prefixed with `iteras-` specifically to avoid any ambiguity with a WordPress account login, which this has nothing to do with.

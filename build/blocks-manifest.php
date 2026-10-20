@@ -10,6 +10,15 @@ return array(
 		'editorScript' => 'file:./index.js',
 		'textdomain' => 'gopublish-iteras-block'
 	),
+	'post-access-correction' => array(
+		'$schema' => 'https://schemas.wp.org/trunk/block.json',
+		'apiVersion' => 3,
+		'name' => 'gopublish-iteras-block/post-access-correction',
+		'title' => 'Iteras Post Access Correction (internal, not a real block)',
+		'description' => 'Exists only so the build tooling (wp-scripts) discovers and bundles this directory\'s frontend-only JavaScript, which corrects has-access/no-access classes client-side for posts rendered as teasers inside a query loop. Never passed to register_block_type() — see gopublish_iteras_emit_post_access_correction() in gopublish-iteras-block.php, which enqueues the compiled script directly instead, since it needs to load on any page with these classes, not just pages containing one particular block.',
+		'viewScript' => 'file:./view.js',
+		'textdomain' => 'gopublish-iteras-block'
+	),
 	'iteras-logged-in' => array(
 		'$schema' => 'https://schemas.wp.org/trunk/block.json',
 		'apiVersion' => 3,
@@ -57,6 +66,7 @@ return array(
 		'editorScript' => 'file:./index.js',
 		'editorStyle' => 'file:./index.css',
 		'style' => 'file:./style-index.css',
+		'viewScript' => 'file:./view.js',
 		'render' => 'file:./render.php'
 	),
 	'iteras-logout' => array(

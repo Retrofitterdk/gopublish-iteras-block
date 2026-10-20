@@ -64,12 +64,15 @@ gopublish-iteras-block/
 │   │       ├── save.js               # Save function — returns null, render.php builds everything
 │   │       ├── render.php            # Server-side render — builds Iteras.paywalliframe() call directly
 │   │       └── editor.scss           # Editor-only styles
-│   └── block-variations/             # See "Block Variations" below — not a real block
+│   ├── block-variations/             # See "Block Variations" below — not a real block
+│   │   ├── block.json                # Build-tooling marker only, never register_block_type()'d
+│   │   ├── index.js                  # Shared entry point — imports every variation file below
+│   │   ├── paywall-label.js          # "Iteras Paywall Label" core/paragraph variation
+│   │   ├── customer-id.js            # "Iteras Customer ID" core/paragraph variation
+│   │   └── login-button.js           # "Iteras Login Button" core/button variation
+│   └── post-access-correction/       # Same independent-loading pattern as block-variations/ — not a real block
 │       ├── block.json                # Build-tooling marker only, never register_block_type()'d
-│       ├── index.js                  # Shared entry point — imports every variation file below
-│       ├── paywall-label.js          # "Iteras Paywall Label" core/paragraph variation
-│       ├── customer-id.js            # "Iteras Customer ID" core/paragraph variation
-│       └── login-button.js           # "Iteras Login Button" core/button variation
+│       └── view.js                   # Corrects has-access/no-access client-side on any page with these classes
 ├── build/                            # Compiled assets (generated, do not edit)
 │   ├── blocks-manifest.php           # PHP block metadata manifest (WP 6.7+)
 │   ├── blocks/
@@ -98,10 +101,14 @@ gopublish-iteras-block/
 │   │       ├── index.asset.php
 │   │       ├── index.css
 │   │       └── render.php
-│   └── block-variations/
+│   ├── block-variations/
+│   │   ├── block.json                # Copied from src/ as-is, still inert
+│   │   ├── index.js                  # Compiled bundle of all variation files
+│   │   └── index.asset.php           # Dependency manifest, read manually (see "Block Variations")
+│   └── post-access-correction/
 │       ├── block.json                # Copied from src/ as-is, still inert
-│       ├── index.js                  # Compiled bundle of all variation files
-│       └── index.asset.php           # Dependency manifest, read manually (see "Block Variations")
+│       ├── view.js                   # Compiled script
+│       └── view.asset.php            # Dependency manifest, read manually (same pattern as block-variations/)
 ├── languages/
 │   └── gopublish-iteras-block.pot   # Translation template
 ├── package.json
@@ -154,7 +161,7 @@ echo $content;
 
 **Block name:** `gopublish-iteras-block/iteras-logged-in`  
 **Category:** Design  
-**Type:** Dynamic (server-side rendered via `render.php`)
+**Type:** Dynamic (`render.php`), with a frontend `view.js` that does the actual show/hide decision
 
 A block equivalent of Iteras' own `[iteras-if-logged-in]` / `[iteras-if-not-logged-in]` shortcodes (`Iteras::content_by_login_status()` in `iteras/public/iteras-public.php`), for use in places shortcodes aren't usable — template parts, synced patterns used outside `the_content`, etc.
 
@@ -179,7 +186,37 @@ A single **RadioControl** in the sidebar: "Show content to" → *visitors who ar
 1. **No server-side validation configured** → content is always shown (fail open), in either mode. There's no way to check the pass at all in this state.
 2. **Current user has `edit_pages`** → content is always shown, in either mode. This is the subtle one: naively calling `iteras_user_has_access()` (which has its own internal editor bypass returning `true`) and then inverting that for `'not-logged-in'` mode would incorrectly *hide* content from editors in that mode. Editors must see the content regardless of which mode is selected, exactly like the shortcodes.
 
-Only once both of those are ruled out does it evaluate `iteras_user_has_access()` and compare against `showWhen`.
+Both of those branches are resolved **server-side**, unconditionally — they're the same for every visitor (or never actually reach a cached page in practice, since a logged-in WordPress session already forces a cache bypass at the hosting layer on its own), so baking them into a cached response is safe.
+
+Once both are ruled out, the real per-visitor case is handled completely differently — not by computing `iteras_user_has_access()` and conditionally echoing. Doing that would mean a page using this block could never be served from a full-page cache without risking stale, wrong content for other visitors (confirmed in production: a page cached while actually logged in was later served, unchanged, to logged-out visitors, showing them as logged in). Instead `render.php` always outputs the content, wrapped and hidden by default:
+
+```php
+printf(
+    '<div data-iteras-show-when="%s" style="display:none">%s</div>',
+    esc_attr( $show_when ),
+    $content
+);
+```
+
+`view.js` (a frontend-only `viewScript`, loaded only on pages containing this block) is what actually decides, client-side, reading the visitor's own `iteraspass` cookie via Iteras' `Iteras.paywallPass()`:
+
+```js
+var pass = Iteras.paywallPass();
+var isLoggedIn = !! pass && pass.expires instanceof Date && pass.expires.getTime() > Date.now();
+
+document.querySelectorAll( '[data-iteras-show-when]' ).forEach( function ( el ) {
+    var showWhen = el.getAttribute( 'data-iteras-show-when' );
+    if ( ( showWhen === 'not-logged-in' ) ? ! isLoggedIn : isLoggedIn ) {
+        el.style.display = '';
+    }
+} );
+```
+
+This means a page using this block renders *identically* for every visitor — fully cacheable — and only a small client-side step personalizes it afterwards. It's a deliberately narrower fix than bypassing full-page caching entirely for every logged-in visitor on every page (see the Olfi theme's `inc/custom.php`, `bypass_dynamic_cache_for_iteras_login()`) — most of a typical page has nothing visitor-dependent on it at all; this only makes the actual visitor-dependent fragment safe to cache around, rather than paying the cost of never caching the whole page for anyone who happens to be logged in.
+
+**A weaker check, on purpose.** `Iteras.paywallPass()` parses the cookie and exposes its expiry, but — unlike this plugin's own `iteras_user_has_access()` — performs no HMAC signature verification; the signing key is a server-only secret, so that's not something any client-side check can do. That's fine here specifically because this block only ever controls a status *display*; actual paywalled content access is still fully, correctly enforced server-side (Iteras' own truncation, and this plugin's `iteras_user_has_access_for_post()`), regardless of what this block happens to show.
+
+**The "Iteras Customer ID" paragraph gets corrected too.** Its server-resolved value (via the `gopublish-iteras-block/customer-id` Block Binding) would otherwise freeze into a cached page the exact same way this block's visibility used to. `view.js` also selects `.iteras-customer-id` (the variation's own stable class, see [Block Variations](#block-variations-srcblock-variations)) and overwrites its text with `pass.customer`. Block variations can't have their own `viewScript`, so this piggybacks on this block's — consistent with this plugin's own documented convention that the Customer ID variation should always be wrapped inside an Iteras Login Status block anyway.
 
 ## The Iteras Logout Button block
 
@@ -412,6 +449,20 @@ The first two are about a specific *post*; the third is purely about the *visito
 These can all disagree on the same request: a post can be `is-paywalled` and `has-access` at once (a subscriber reading gated content), or `is-paywalled` and `no-access` (an anonymous visitor hitting the same gate), independently of whatever `iteras-logged-in`/`iteras-not-logged-in` says about the visitor generally. Use `is-paywalled`/`is-not-paywalled` for a universal "this is premium content" marker (e.g. a lock badge shown to everyone); use `has-access`/`no-access` for anything that should differ per visitor on that specific post; use `iteras-logged-in`/`iteras-not-logged-in` for anything that only cares whether the visitor is logged in at all (e.g. showing a login link vs. an account link in the header).
 
 `body_class_for_paywalled_content()` specifically excludes the front page (`is_front_page()`, not just `is_singular()` — a static front page still satisfies `is_singular()`) since the homepage itself was never meant to be tagged this way; `body_class_for_paywall_access()` has no such exclusion (a pre-existing difference between the two, kept as-is when the paywalled-content pair moved here from the theme, rather than silently unifying behaviour nobody asked to change).
+
+### Caching: `has-access`/`no-access` on a cached page
+
+`has-access`/`no-access` is visitor-specific, which is exactly what makes it unsafe to bake into a cached page — and this site's Dynamic Caching layer doesn't vary by the `iteraspass` cookie on its own (see the Olfi theme's `inc/custom.php`). Two of the three places this class pair can appear turn out to already be safe, and one genuinely isn't:
+
+- **`body_class` on a singular, actually-paywalled post** — safe. That page is never cached at all; Iteras' own `potentially_prevent_caching()` sends `DONOTCACHEPAGE` for it.
+- **`body_class` on a singular, non-paywalled post** — safe. `has-access` is `true` for every visitor there (no paywall assigned), so there's nothing visitor-specific to go stale.
+- **`post_class` on a post rendered as a teaser inside a query loop** (the homepage, an archive) — **not safe**, and confirmed in production to actually matter: the Olfi theme's `archive.scss` hides the featured-category label specifically via `.no-access .is-featured-category`, so a stale class here is visibly wrong, not just cosmetic.
+
+`post_class_for_paywall_access()` handles this by recording the post's own paywall ID(s) into a request-scoped global (`$gopublish_iteras_rendered_post_paywalls`) whenever it computes `has-access`/`no-access` for an actually-paywalled post — skipped for editors, since their value is already unconditionally correct via `iteras_user_has_access()`'s own `edit_pages` bypass, and a client-side check has no way to tell "this visitor is a WordPress editor" to avoid wrongly reversing that.
+
+The comparison logic itself lives in `src/post-access-correction/view.js` — a real, browser-cacheable script, not inlined into the page, since it's identical on every page and only the data differs. It isn't tied to any one block's `viewScript` (it needs to run on any page with these classes, not just pages containing a particular block), so it follows the same independent-loading pattern as [Block Variations](#block-variations-srcblock-variations) below: a `block.json` that exists purely as a wp-scripts build marker, never passed to `register_block_type()`, with the compiled script enqueued manually instead.
+
+`gopublish_iteras_enqueue_post_access_correction()` does that enqueuing — hooked to `wp_footer` at an early priority (`5`, before core's own `wp_print_footer_scripts()` at its default priority `20`) rather than the usual `wp_enqueue_scripts`, because the data it needs is only complete at the very end of the request. It's still correctly printed in the same `wp_footer` pass; the tradeoff is that this can't use the conditional per-block-presence loading a real block's `viewScript` gets for free, so it checks the same condition manually — only enqueuing when `$gopublish_iteras_rendered_post_paywalls` is non-empty — and attaches the late-known data via `wp_add_inline_script()` (the same pattern `wp_localize_script()` uses under the hood), comparing each recorded post's paywall ID(s) against the visitor's own pass (`Iteras.paywallPass()`, which exposes the full per-paywall access-level map, not just presence) and toggling the classes to match, replicating `iteras_user_has_access()`'s own "sub, or user when that paywall allows it" logic (`iteras_paywall_allows_user_level()`).
 
 ## Plugin dependency
 
