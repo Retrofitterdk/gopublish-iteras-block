@@ -301,27 +301,3 @@ function post_class_for_paywalled_content( $classes, $class, $post_id ) {
 	return $classes;
 }
 add_filter( 'post_class', 'post_class_for_paywalled_content', 10, 3 );
-
-/**
- * A third, independent class pair: does this visitor hold a valid Iteras
- * pass for *anything at all* — the same question the Iteras Login Status
- * block answers (iteras_user_has_access() with no paywall restriction) —
- * deliberately not "does this visitor have access to this post"
- * (has-access/no-access above) or "is this post gated at all"
- * (is-paywalled/is-not-paywalled above). Those are about a specific post;
- * this is purely about the visitor, so no is_singular() guard and no
- * post_class sibling — it would be the same value on every post in a
- * query loop, since it doesn't vary per post.
- *
- * Prefixed with "iteras-" (unlike the other two pairs) specifically
- * because "logged in" on its own is ambiguous with a WordPress account
- * login, which this has nothing to do with — current_user_can('edit_pages')
- * editors are still unconditionally included via iteras_user_has_access()'s
- * own bypass, consistent with every other access check in this plugin.
- */
-function body_class_for_login_status( $classes ) {
-	$classes[] = iteras_user_has_access() ? 'iteras-logged-in' : 'iteras-not-logged-in';
-
-	return $classes;
-}
-add_filter( 'body_class', 'body_class_for_login_status' );
