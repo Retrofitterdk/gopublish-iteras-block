@@ -107,6 +107,56 @@ if ( ! function_exists( 'iteras_get_post_paywall_ids' ) ) {
 }
 
 /**
+ * Returns true if the given post has any paywall(s) assigned at all — a
+ * plain post-level fact, independent of the current visitor's access and
+ * independent of iteras_user_has_access_for_post(). Use this to mark "this
+ * is premium content" (e.g. a badge shown to every visitor regardless of
+ * their own access); use iteras_user_has_access_for_post() instead to
+ * decide what the *current visitor* is allowed to see.
+ *
+ * Built on iteras_get_post_paywall_ids(), so it shares that function's
+ * null-safety: when Iteras isn't active, this returns false (consistent
+ * with this plugin's fail-open behaviour — nothing is "paywalled" when the
+ * paywall system itself isn't running), same as an empty array of IDs.
+ *
+ * @param int|null $post_id Post ID. Defaults to the current global post.
+ * @return bool
+ */
+if ( ! function_exists( 'iteras_is_post_paywalled' ) ) {
+	function iteras_is_post_paywalled( ?int $post_id = null ): bool {
+		return ! empty( iteras_get_post_paywall_ids( $post_id ) );
+	}
+}
+
+/**
+ * Returns Iteras' own "Default paywall access for new posts" setting,
+ * normalised to an array — the same shape iteras_get_post_paywall_ids()
+ * and iteras_user_has_access() expect.
+ *
+ * This is a pure UI default: Iteras only uses it to pre-tick a checkbox in
+ * the post-editor metabox for posts that don't have paywall meta saved yet
+ * (Iteras_Admin::paywall_post_meta_box(), iteras/admin/iteras-admin.php) —
+ * it's never applied to a post automatically just by existing. The
+ * underlying setting is always either '' ("Everybody") or a single paywall
+ * ID, never multiple (it's a plain <select>, not a checkbox list).
+ *
+ * @return string[]|null Empty array when set to "Everybody", a one-element
+ *                        array holding the default paywall ID otherwise.
+ *                        Null when the Iteras plugin isn't active.
+ */
+if ( ! function_exists( 'iteras_get_default_paywall_ids' ) ) {
+	function iteras_get_default_paywall_ids(): ?array {
+		if ( ! class_exists( 'Iteras' ) ) {
+			return null;
+		}
+
+		$default_access = Iteras::get_instance()->settings['default_access'] ?? '';
+
+		return $default_access !== '' ? [ $default_access ] : [];
+	}
+}
+
+/**
  * Returns true if the current visitor has access to a specific post's paywalled content.
  *
  * Looks up the paywall IDs assigned to the post via iteras_get_post_paywall_ids()
@@ -243,11 +293,40 @@ if ( ! function_exists( 'iteras_get_default_paywall_cta_label' ) ) {
 }
 
 /**
+ * Returns true if the given paywall ID is configured (via the "Iteras
+ * Paywall CTA" settings screen, see inc/admin-settings.php) to treat a
+ * registered-but-not-subscribed ("user" level) Iteras pass as sufficient
+ * access, not just a paying subscription ("sub" level).
+ *
+ * Off by default — Iteras' own pass_authorized() (and, historically,
+ * _iteras_pass_authorized() below) only ever recognise "sub" level, with no
+ * exposed way to extend that check. This setting is this plugin's own,
+ * additional allowance on top of that, scoped per paywall ID so most
+ * paywalls keep requiring a real subscription.
+ *
+ * @param string $paywall_id
+ * @return bool
+ */
+if ( ! function_exists( 'iteras_paywall_allows_user_level' ) ) {
+	function iteras_paywall_allows_user_level( string $paywall_id ): bool {
+		$paywalls = get_option( 'gopublish_iteras_paywall_cta_settings', [] )['paywalls'] ?? [];
+
+		return ! empty( $paywalls[ $paywall_id ]['allow_user_level'] );
+	}
+}
+
+/**
  * Validates an Iteras pass cookie value against a list of paywall IDs.
  *
  * This replicates Iteras::pass_authorized(), which is a private method and
  * cannot be called from outside the class. Prefixed with an underscore to
  * signal it is an internal helper; use iteras_user_has_access() instead.
+ *
+ * Unlike Iteras' own pass_authorized(), a "user" level pass also counts as
+ * authorized for paywall IDs configured via iteras_paywall_allows_user_level()
+ * — see inc/admin-settings.php. This is this plugin's own, additional
+ * allowance; Iteras' own code and content-truncation logic never grants
+ * this, see inc/content-paywall-override.php.
  *
  * @param string   $pass        Raw value of the iteraspass cookie.
  * @param string[] $restriction List of paywall IDs to check against.
@@ -291,12 +370,88 @@ if ( ! function_exists( '_iteras_pass_authorized' ) ) {
 			$access           = array_combine( $pass_paywall_ids, $access_levels );
 
 			foreach ( $restriction as $r ) {
-				if ( ( $access[ $r ] ?? null ) === 'sub' ) {
+				$level = $access[ $r ] ?? null;
+
+				if ( $level === 'sub' ) {
+					return true;
+				}
+
+				if ( $level === 'user' && iteras_paywall_allows_user_level( $r ) ) {
 					return true;
 				}
 			}
 		}
 
 		return false;
+	}
+}
+
+/**
+ * Returns the current visitor's Iteras customer ID, read directly from the
+ * signed iteraspass cookie — no API call needed.
+ *
+ * Iteras' own docs (https://app.iteras.dk/api/docs/guides/identity/) say
+ * the cookie "carries the access level and customer number", but neither
+ * Iteras' own pass_authorized() nor _iteras_pass_authorized() above ever
+ * reads it — both only parse access_levels|paywall_ids|expiry (indices 0-2
+ * of the pipe-separated data segment) and silently discard the rest. A real
+ * captured cookie confirmed the full format is actually:
+ *
+ *   {access_levels}|{paywall_ids}|{expiry}|{customer_id}|{client_ip}/{algo}:{hmac}
+ *
+ * This is the customer's account-level ID, not a per-subscription ID — one
+ * customer can have more than one active subscription; distinguishing
+ * those would need an API call to GET /api/customers/?id=... instead (see
+ * https://app.iteras.dk/api/docs/server/retrievingcustomers/).
+ *
+ * Verifies the HMAC signature and expiry first, same checks
+ * _iteras_pass_authorized() does — a forged or expired cookie never
+ * returns an ID, even though this doesn't itself grant or check access to
+ * anything.
+ *
+ * @return string|null Customer ID, or null when there's no valid pass.
+ */
+if ( ! function_exists( 'iteras_get_customer_id' ) ) {
+	function iteras_get_customer_id(): ?string {
+		if ( ! class_exists( 'Iteras' ) || empty( $_COOKIE['iteraspass'] ) ) {
+			return null;
+		}
+
+		$iteras      = Iteras::get_instance();
+		$signing_key = $iteras->settings['signing_key'] ?? '';
+		$pass        = sanitize_text_field( wp_unslash( $_COOKIE['iteraspass'] ) );
+
+		$pos = strrpos( $pass, '/' );
+		if ( $pos === false ) {
+			return null;
+		}
+
+		$data      = substr( $pass, 0, $pos );
+		$sig       = substr( $pass, $pos + 1 );
+		$sig_parts = explode( ':', $sig, 2 );
+		$algo_name = $sig_parts[0] ?? '';
+		$hmac      = $sig_parts[1] ?? '';
+
+		$algo = [ 'sha1' => 'sha1', 'sha256' => 'sha256' ][ $algo_name ] ?? null;
+		if ( ! $algo ) {
+			return null;
+		}
+
+		$computed_hmac = hash_hmac( $algo, $data, $signing_key );
+
+		// Skip HMAC verification when no signing key is configured (mirrors original behaviour).
+		if ( $computed_hmac !== false && $signing_key && ! hash_equals( $computed_hmac, $hmac ) ) {
+			return null;
+		}
+
+		$parts  = explode( '|', $data );
+		$expiry = strtotime( $parts[2] ?? '' );
+		if ( $expiry === false || $expiry < time() ) {
+			return null;
+		}
+
+		$customer_id = $parts[3] ?? '';
+
+		return $customer_id !== '' ? $customer_id : null;
 	}
 }

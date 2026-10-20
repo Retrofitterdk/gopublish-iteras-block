@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "gopublish-iteras-block/iteras-paywall-login",
+  "version": "0.1.0",
+  "title": "Iteras Paywall Login",
+  "category": "design",
+  "icon": "unlock",
+  "description": "Embeds Iteras' own login/subscribe iframe (Iteras.paywalliframe()) — a block equivalent of the [iteras-paywall-login] shortcode, with which paywalls it applies to and whether a free registered-user pass is accepted configurable in the editor, instead of hand-written shortcode attributes.",
+  "keywords": [
+    "iteras",
+    "login",
+    "paywall",
+    "subscribe",
+    "access"
+  ],
+  "attributes": {
+    "paywallIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "accessLevel": {
+      "type": "string",
+      "enum": [
+        "",
+        "user"
+      ],
+      "default": ""
+    }
+  },
+  "supports": {
+    "html": false,
+    "color": {
+      "background": true,
+      "text": true
+    },
+    "spacing": {
+      "margin": true,
+      "padding": true
+    },
+    "align": [
+      "wide",
+      "full"
+    ]
+  },
+  "textdomain": "gopublish-iteras-block",
+  "editorScript": "file:./index.js",
+  "editorStyle": "file:./index.css",
+  "render": "file:./render.php"
+}

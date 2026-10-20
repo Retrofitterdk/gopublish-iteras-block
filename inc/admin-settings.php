@@ -53,9 +53,11 @@ add_action( 'init', 'gopublish_iteras_cta_register_pattern_category', 20 );
 /**
  * One-time migration from the old "Iteras Ordering" screen: seeds the new
  * option's Default pattern from whatever synced pattern the old free-text
- * fallback CTA already pointed at (e.g. "[synced_pattern id="31736"]"), so
- * the site doesn't lose its fallback CTA mid-rollout. No-ops once the new
- * option exists — this never overwrites deliberate configuration.
+ * fallback CTA already pointed at (e.g. "[synced_pattern id="31736"]" —
+ * historical format only; that shortcode itself no longer exists, this
+ * just parses the leftover text to recover the pattern ID), so the site
+ * doesn't lose its fallback CTA mid-rollout. No-ops once the new option
+ * exists — this never overwrites deliberate configuration.
  */
 if ( ! function_exists( 'gopublish_iteras_cta_maybe_migrate' ) ) {
 	function gopublish_iteras_cta_maybe_migrate() {
@@ -116,13 +118,15 @@ if ( ! function_exists( 'gopublish_iteras_cta_sanitize_settings' ) ) {
 					continue;
 				}
 
-				$label      = sanitize_text_field( (string) ( $config['label'] ?? '' ) );
-				$pattern_id = absint( $config['pattern_id'] ?? 0 );
+				$label             = sanitize_text_field( (string) ( $config['label'] ?? '' ) );
+				$pattern_id        = absint( $config['pattern_id'] ?? 0 );
+				$allow_user_level = ! empty( $config['allow_user_level'] );
 
-				if ( $label !== '' || $pattern_id !== 0 ) {
+				if ( $label !== '' || $pattern_id !== 0 || $allow_user_level ) {
 					$output['paywalls'][ $paywall_id ] = [
-						'label'      => $label,
-						'pattern_id' => $pattern_id,
+						'label'             => $label,
+						'pattern_id'        => $pattern_id,
+						'allow_user_level' => $allow_user_level,
 					];
 				}
 			}
@@ -319,6 +323,23 @@ if ( ! function_exists( 'gopublish_iteras_cta_render_page' ) ) {
 									?>
 								</td>
 							</tr>
+							<tr>
+								<th scope="row"><?php esc_html_e( 'Registered users', 'gopublish-iteras-block' ); ?></th>
+								<td>
+									<label>
+										<input
+											type="checkbox"
+											name="<?php echo esc_attr( GOPUBLISH_ITERAS_CTA_OPTION ); ?>[paywalls][<?php echo esc_attr( $paywall_id ); ?>][allow_user_level]"
+											value="1"
+											<?php checked( ! empty( $config['allow_user_level'] ) ); ?>
+										>
+										<?php esc_html_e( 'Allow access with a registered-but-not-subscribed ("user" level) Iteras pass, not just a paying subscription', 'gopublish-iteras-block' ); ?>
+									</label>
+									<p class="description">
+										<?php esc_html_e( 'Off by default: content stays restricted to paying subscribers ("sub" level), matching Iteras\' own behaviour. Turn this on only for paywalls meant to grant free registered users access — it also unlocks the full article (bypassing Iteras\' own truncation), since Iteras\' own paywall check never recognises "user" level.', 'gopublish-iteras-block' ); ?>
+									</p>
+								</td>
+							</tr>
 						</table>
 					</div>
 				<?php endforeach; ?>
@@ -349,3 +370,40 @@ if ( ! function_exists( 'gopublish_iteras_cta_render_page' ) ) {
 		<?php
 	}
 }
+
+/**
+ * Reveals Iteras' own hidden "User landing page" field (user_url) on its
+ * settings screen (Settings -> ITERAS). That field's row carries an inline
+ * `style="display: none"` in iteras/admin/views/admin.php:92 — hidden in
+ * the UI, but otherwise fully functional: its value is already read and
+ * saved by Iteras' own save_settings_form()
+ * (iteras/admin/iteras-admin.php:361), it's simply never shown.
+ *
+ * Needed, not just a nice-to-have: the "Iteras Login Button" block
+ * variation reads this exact setting (see
+ * gopublish_iteras_login_url_binding_callback() in inc/block-bindings.php)
+ * for its link — deliberately `user_url`, not `subscribe_url`, so an
+ * existing subscriber clicking "log in" doesn't land on the same
+ * subscribe-focused page as the paywall call-to-action they just saw.
+ * Without this reveal, there'd be no way to configure that value at all.
+ *
+ * Iteras is a plugin-repo dependency (see the equivalent note in
+ * inc/post-content-layout-fix.php) — edits to its own files get wiped on
+ * update — so this reveals the existing field with a small CSS override
+ * instead of touching admin/views/admin.php directly. Scoped to Iteras'
+ * settings screen only, via the admin_head-{$hook_suffix} action, which
+ * WordPress only fires on that exact admin screen (confirmed the real
+ * hook suffix via the rendered <body> class: "settings_page_iteras").
+ */
+if ( ! function_exists( 'gopublish_iteras_reveal_user_url_field' ) ) {
+	function gopublish_iteras_reveal_user_url_field() {
+		?>
+		<style>
+			tr:has(#userurl) {
+				display: table-row !important;
+			}
+		</style>
+		<?php
+	}
+}
+add_action( 'admin_head-settings_page_iteras', 'gopublish_iteras_reveal_user_url_field' );
